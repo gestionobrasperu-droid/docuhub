@@ -122,7 +122,8 @@ try {
 # ── 7. Reglas de ingress y puertos locales ───────────────────────────────────
 Write-Head "7. Aplicaciones configuradas"
 if (Test-Path $configPath) {
-    $cfg   = Get-Content $configPath
+    # UTF-8 explícito: Get-Content trataría como CP1252 un archivo sin BOM.
+    $cfg   = [System.IO.File]::ReadAllLines($configPath, [System.Text.Encoding]::UTF8)
     $host_ = $null
     foreach ($l in $cfg) {
         if ($l -match '^\s*-\s*hostname:\s*(\S+)') { $host_ = $Matches[1]; continue }
@@ -146,7 +147,7 @@ if (Test-Path $configPath) {
 # ── 8. Prueba real desde internet ────────────────────────────────────────────
 Write-Head "8. Respuesta desde internet"
 if (Test-Path $configPath) {
-    $hosts = Get-Content $configPath |
+    $hosts = [System.IO.File]::ReadAllLines($configPath, [System.Text.Encoding]::UTF8) |
              ForEach-Object { if ($_ -match '^\s*-\s*hostname:\s*(\S+)') { $Matches[1] } }
     $ProgressPreference = 'SilentlyContinue'
     foreach ($h in $hosts) {

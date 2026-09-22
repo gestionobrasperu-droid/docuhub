@@ -190,7 +190,10 @@ $($rules.ToString())  # MARCADOR-APPS  (add-app.ps1 inserta encima de esta linea
   - service: http_status:404
 "@
 
-Set-Content -Path $configPath -Value $config -Encoding utf8
+# UTF-8 sin BOM y de forma explícita: `Set-Content -Encoding utf8` en
+# PowerShell 5.1 añade BOM, y quien luego lea con `Get-Content` un archivo sin
+# BOM lo interpretaría como CP1252. Mejor un solo criterio en todos los scripts.
+[System.IO.File]::WriteAllText($configPath, $config, (New-Object System.Text.UTF8Encoding($false)))
 Write-Ok "$configPath"
 
 # Valida la sintaxis antes de seguir.

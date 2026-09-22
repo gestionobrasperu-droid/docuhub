@@ -26,6 +26,14 @@ function Write-Step($text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan 
 function Write-Ok($text)   { Write-Host "  [ok] $text" -ForegroundColor Green }
 function Write-Warn2($text){ Write-Host "  [!]  $text" -ForegroundColor Yellow }
 
+# Una terminal abierta antes de instalar algo conserva el PATH viejo y no
+# encuentra lo recién instalado. Se recarga desde el registro.
+function Sync-Path {
+    $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+                [System.Environment]::GetEnvironmentVariable('Path', 'User')
+}
+Sync-Path
+
 function Test-Command($name) {
     $null -ne (Get-Command $name -ErrorAction SilentlyContinue)
 }
@@ -37,8 +45,19 @@ function Install-IfMissing($command, $wingetId, $label) {
     }
     Write-Host "  Instalando $label…"
     winget install --id $wingetId -e --accept-package-agreements --accept-source-agreements --silent --disable-interactivity
-    if ($LASTEXITCODE -eq 0) { Write-Ok "$label instalado" }
-    else { Write-Warn2 "No se pudo instalar $label automáticamente (código $LASTEXITCODE). Instálalo a mano." }
+    $code = $LASTEXITCODE
+    Sync-Path
+
+    # winget no distingue "instalado" de "ya lo tenías" en el código de salida:
+    # -1978335189 (0x8A15002B) y 43 significan "no hay actualización aplicable",
+    # que en la práctica quiere decir que el paquete ya estaba puesto.
+    if ($code -eq 0) {
+        Write-Ok "$label instalado"
+    } elseif ($code -eq -1978335189 -or $code -eq 43 -or (Test-Command $command)) {
+        Write-Ok "$label ya estaba instalado"
+    } else {
+        Write-Warn2 "No se pudo instalar $label automáticamente (código $code). Instálalo a mano."
+    }
 }
 
 # ---------------------------------------------------------------- requisitos --
@@ -56,12 +75,22 @@ Install-IfMissing 'go'          'GoLang.Go'            'Go'
 Install-IfMissing 'cloudflared' 'Cloudflare.cloudflared' 'cloudflared'
 
 if (-not $SkipDocker) {
-    if (Test-Command 'docker') {
-        Write-Ok 'Docker ya está instalado'
+    Install-IfMissing 'docker' 'Docker.DockerDesktop' 'Docker Desktop'
+
+    # Docker en Windows corre sobre WSL2. Si falta, el servicio arranca igual
+    # y todo comando falla con un error 500 del API, que despista mucho.
+    # enable-docker.ps1 (como administrador) lo deja resuelto.
+    $wslOk = $false
+    try {
+        & wsl.exe --status 2>&1 | Out-Null
+        $wslOk = ($LASTEXITCODE -eq 0)
+    } catch { }
+
+    if (-not $wslOk) {
+        Write-Warn2 'Falta WSL2, que es el motor de Docker en Windows. Ejecuta como administrador:'
+        Write-Warn2 '    .\scripts\enable-docker.ps1'
     } else {
-        Write-Host '  Instalando Docker Desktop (tarda varios minutos)…'
-        winget install --id Docker.DockerDesktop -e --accept-package-agreements --accept-source-agreements --silent --disable-interactivity
-        Write-Warn2 'Docker Desktop requiere reiniciar la sesión de Windows antes del primer uso.'
+        Write-Ok 'WSL2 disponible'
     }
 }
 

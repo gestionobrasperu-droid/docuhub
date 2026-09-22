@@ -1,29 +1,85 @@
-# Configuración del túnel cuando se ejecuta cloudflared como servicio de
-# Windows (en lugar del contenedor). Copiar a:
-#   %USERPROFILE%\.cloudflared\config.yml
+# ─────────────────────────────────────────────────────────────────────────────
+#  Configuración del túnel de Cloudflare (cloudflared como servicio de Windows)
 #
-# Pasos previos:
-#   cloudflared tunnel login
-#   cloudflared tunnel create docuhub
-#   cloudflared tunnel route dns docuhub docs.constructorapesam.com
-#   cloudflared service install
+#  Esto es una PLANTILLA DE REFERENCIA. Para uso real NO la copies a mano:
+#      .\scripts\setup-tunnel.ps1
+#  genera el archivo definitivo en %USERPROFILE%\.cloudflared\config.yml con el
+#  UUID y las rutas absolutas ya resueltos, y valida la sintaxis.
+#
+#  Pasos equivalentes a mano:
+#      cloudflared tunnel login
+#      cloudflared tunnel create docuhub
+#      cloudflared tunnel route dns docuhub docs.constructorapesam.com
+#      cloudflared service install
+#
+#  ⚠️ Tras `service install`, COMPRUEBA que el servicio arrancó con configuración:
+#      (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\cloudflared').ImagePath
+#     Debe contener `--config`. La versión 2026.9.1 registra el servicio SIN
+#     argumentos y sin copiar este archivo: el servicio figura como "Running"
+#     pero no enruta nada y Cloudflare devuelve 530. Ver docs/03-CLOUDFLARE-DOMINIO.md §11.1.
+# ─────────────────────────────────────────────────────────────────────────────
 
 tunnel: PEGA-AQUI-EL-UUID-DEL-TUNEL
 credentials-file: C:\Users\HP\.cloudflared\PEGA-AQUI-EL-UUID-DEL-TUNEL.json
 
-# Sin límite de tiempo para subidas y descargas largas.
+# Métricas locales (Prometheus, texto plano): http://localhost:20241/metrics
+# El watchdog las consulta para saber si el túnel sigue vivo sin salir a internet.
+metrics: localhost:20241
+
+retries: 5
+grace-period: 30s          # al parar, deja terminar las transferencias en curso
+loglevel: info
+logfile: C:\Users\HP\.cloudflared\cloudflared.log
+
+# ── Ajustes por defecto para TODAS las reglas ────────────────────────────────
+# Ojo: estos son tiempos de ESTABLECIMIENTO de conexión, no de transferencia.
+# cloudflared no impone límite a la duración de una subida o descarga, así que
+# un archivo de varios GB puede tardar lo que haga falta.
 originRequest:
   connectTimeout: 30s
   tlsTimeout: 30s
   tcpKeepAlive: 30s
-  noHappyEyeballs: false
   keepAliveConnections: 100
   keepAliveTimeout: 90s
-  httpHostHeader: docs.constructorapesam.com
+  # Debe quedar en false: el streaming de archivos grandes depende del chunked.
   disableChunkedEncoding: false
 
+  # NO pongas `httpHostHeader` aquí. Es un ajuste POR APLICACIÓN: en el bloque
+  # global forzaría la misma cabecera Host para todos los hostnames del túnel,
+  # de modo que api.* y panel.* recibirían el Host de docs.* y romperían el
+  # enrutado por virtual host. Si alguna app concreta lo necesita, ponlo dentro
+  # de su propia regla (ver el ejemplo comentado más abajo).
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  REGLAS DE ENTRADA
+#  Se evalúan EN ORDEN: gana la primera que coincide.
+#  La última (http_status:404) es OBLIGATORIA y va siempre al final.
+# ─────────────────────────────────────────────────────────────────────────────
 ingress:
+
+  # ── Página de prueba ───────────────────────────────────────────────────────
+  # La sirve el propio cloudflared, sin depender de ninguna aplicación. Permite
+  # verificar dominio + Cloudflare + túnel ANTES de que exista nada escuchando.
+  # Bórrala cuando ya no la necesites.
+  - hostname: test.constructorapesam.com
+    service: hello_world
+
+  # ── DocuHub ────────────────────────────────────────────────────────────────
   - hostname: docs.constructorapesam.com
     service: http://localhost:8080
-  # Todo lo que no coincida se rechaza.
+
+  # ── Ejemplo: ajustes por aplicación ────────────────────────────────────────
+  # - hostname: interno.constructorapesam.com
+  #   service: https://localhost:8443
+  #   originRequest:
+  #     noTLSVerify: true                        # certificado autofirmado
+  #     httpHostHeader: interno.constructorapesam.com   # solo si la app lo exige
+
+  # ── MARCADOR-APPS ──────────────────────────────────────────────────────────
+  # No borres la línea de arriba: scripts\add-app.ps1 inserta las aplicaciones
+  # nuevas justo encima de ella, para que siempre queden antes del 404 final.
+
+  # ── Regla final obligatoria ────────────────────────────────────────────────
+  # Todo host que llegue al túnel y no coincida con nada devuelve 404. Evita que
+  # un subdominio mal configurado exponga una aplicación por accidente.
   - service: http_status:404

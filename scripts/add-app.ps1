@@ -70,8 +70,22 @@ if (-not (Test-Path $configPath)) {
     exit 1
 }
 
-$fqdn  = "$Subdomain.$Domain"
-$lines = [System.Collections.Generic.List[string]](Get-Content $configPath)
+$fqdn = "$Subdomain.$Domain"
+
+# Leer y escribir SIEMPRE con UTF-8 explícito. `Get-Content` en PowerShell 5.1
+# interpreta como CP1252 cualquier archivo sin BOM, así que los acentos y los
+# caracteres de dibujo del config se convertirían en caracteres de control C1 y
+# cloudflared rechazaría el archivo con "control characters are not allowed".
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+function Read-ConfigLines ($path) {
+    return [System.Collections.Generic.List[string]][System.IO.File]::ReadAllLines(
+        $path, [System.Text.Encoding]::UTF8)
+}
+function Write-ConfigLines ($path, $lines) {
+    [System.IO.File]::WriteAllLines($path, [string[]]$lines, $Utf8NoBom)
+}
+
+$lines = Read-ConfigLines $configPath
 
 # Respaldo antes de tocar nada.
 $backup = "$configPath.bak-{0:yyyyMMdd-HHmmss}" -f (Get-Date)
@@ -96,7 +110,7 @@ foreach ($line in $lines) {
 
 if ($Remove) {
     if (-not $found) { Write-Warn "$fqdn no estaba en la configuracion."; exit 0 }
-    Set-Content -Path $configPath -Value $out -Encoding utf8
+    Write-ConfigLines $configPath $out
     & $cf tunnel --config $configPath ingress validate
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "config.yml quedo invalido. Restaurando respaldo."
@@ -136,7 +150,7 @@ if ($Remove) {
     $block.Add("")
 
     $out.InsertRange($marker, $block)
-    Set-Content -Path $configPath -Value $out -Encoding utf8
+    Write-ConfigLines $configPath $out
 
     & $cf tunnel --config $configPath ingress validate
     if ($LASTEXITCODE -ne 0) {

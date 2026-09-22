@@ -301,3 +301,23 @@ Son dos fallos distintos y se confunden con facilidad:
 - **`deleted_at` de un túnel vivo no está vacío**: vale `0001-01-01T00:00:00Z`
   (el "tiempo cero" de Go). Filtrar con `-not $_.deleted_at` descarta los túneles
   buenos.
+
+### 11.5 — `control characters are not allowed` al validar el config
+
+`cloudflared` rechaza el YAML con ese mensaje cuando el archivo trae caracteres
+de control. La causa habitual **no** es el archivo, sino cómo se leyó:
+
+`Get-Content` en PowerShell 5.1 interpreta como **CP1252** cualquier archivo sin
+BOM. Los bytes UTF-8 de un acento o de un carácter de dibujo (`─`) se convierten
+entonces en caracteres de control C1 (`U+0081`, `U+008D`, `U+0090`…), que YAML
+prohíbe. Basta con leer y reescribir el config una vez para corromperlo.
+
+Los tres scripts ya usan lectura y escritura UTF-8 explícitas:
+
+```powershell
+[System.IO.File]::ReadAllLines($path, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllLines($path, [string[]]$lines, (New-Object System.Text.UTF8Encoding($false)))
+```
+
+Si editas el config a mano, guárdalo en **UTF-8**. Un BOM no molesta —
+`cloudflared` lo acepta— pero no lo necesitas.
