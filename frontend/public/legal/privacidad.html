@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Política de Privacidad — DocuHub</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.65 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+         max-width: 44rem; margin: 0 auto; padding: 2.5rem 1.2rem 5rem; }
+  h1 { font-size: 1.7rem; margin-bottom: .2rem; }
+  h2 { font-size: 1.15rem; margin-top: 2.2rem; }
+  .fecha { color: #6b7280; font-size: .9rem; }
+  ul { padding-left: 1.2rem; }
+  li { margin: .35rem 0; }
+  code { background: rgba(127,127,127,.15); padding: .1rem .35rem; border-radius: .25rem; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid rgba(127,127,127,.3);
+           color: #6b7280; font-size: .9rem; }
+</style>
+</head>
+<body>
+
+<h1>Política de Privacidad de DocuHub</h1>
+<p class="fecha">Última actualización: 22 de septiembre de 2026</p>
+
+<p>DocuHub es una herramienta interna de gestión documental operada por
+<strong>Constructora Pesam</strong>. Se usa para almacenar, compartir y controlar el acceso a los
+documentos de la empresa. Esta página explica qué datos trata la aplicación y con qué finalidad.</p>
+
+<h2>Quién es el responsable</h2>
+<p>Constructora Pesam. Contacto para cualquier asunto relacionado con esta política:
+<a href="mailto:gestion.obrasperu@gmail.com">gestion.obrasperu@gmail.com</a>.</p>
+
+<h2>Qué datos se tratan</h2>
+<ul>
+  <li><strong>Datos de la cuenta:</strong> correo electrónico, nombre y rol dentro de la plataforma.</li>
+  <li><strong>Contraseña:</strong> nunca se guarda en claro. Se almacena únicamente su huella
+      criptográfica (Argon2id), que no permite recuperar la contraseña original.</li>
+  <li><strong>Documentos:</strong> los archivos que suben los usuarios, junto con su nombre, tamaño,
+      tipo y fecha.</li>
+  <li><strong>Registro de actividad:</strong> qué usuario hizo qué acción, cuándo, desde qué dirección
+      IP y con qué navegador. Incluye inicios de sesión, subidas, descargas, cambios de permisos y
+      creación de enlaces de descarga.</li>
+  <li><strong>Consumo:</strong> volumen de datos subidos y descargados por usuario, para aplicar
+      límites de almacenamiento y de tráfico.</li>
+</ul>
+
+<h2>Para qué se usan</h2>
+<p>Exclusivamente para operar la plataforma: autenticar a los usuarios, entregar los archivos a quien
+tiene permiso, aplicar las cuotas asignadas y mantener una traza de auditoría que permita saber quién
+accedió a cada documento. <strong>No se usan con fines publicitarios, no se venden ni se ceden a
+terceros, y no se emplean para elaborar perfiles.</strong></p>
+
+<h2>Dónde se guardan</h2>
+<p>Los documentos se almacenan en la cuenta de <strong>Google Drive</strong> de la empresa. La
+aplicación accede al API de Google Drive mediante OAuth 2.0, con la autorización expresa del titular
+de esa cuenta, y únicamente para crear carpetas y subir, descargar, renombrar o enviar a la papelera
+los archivos gestionados por la plataforma.</p>
+<p>Los datos de cuentas, permisos y registros de actividad se guardan en una base de datos
+PostgreSQL alojada en un equipo propio de la empresa, no en servicios de terceros.</p>
+<p>Las credenciales de acceso a Google se guardan <strong>cifradas con AES-256-GCM</strong>.</p>
+
+<h2>Uso de los datos de Google</h2>
+<p>El uso que DocuHub hace de la información recibida de los APIs de Google se ajusta a la
+<a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank"
+rel="noopener">Política de Datos de Usuario de los Servicios API de Google</a>, incluidos sus
+requisitos de uso limitado. DocuHub solicita el permiso de acceso a Drive con un único propósito:
+gestionar los documentos de la empresa dentro de su propia carpeta. La aplicación no transfiere esos
+datos a terceros, no los usa para publicidad y no permite que personas los lean salvo con la
+autorización explícita del titular de la cuenta o cuando sea necesario por seguridad o por
+obligación legal.</p>
+
+<h2>Quién puede ver los documentos</h2>
+<p>Solo los usuarios de la plataforma con permiso sobre cada carpeta o archivo, y las personas que
+reciban un enlace de descarga generado expresamente por un usuario autorizado. Esos enlaces pueden
+llevar contraseña, fecha de caducidad y un número máximo de descargas, y pueden revocarse en
+cualquier momento.</p>
+
+<h2>Cuánto tiempo se conservan</h2>
+<p>Los documentos permanecen mientras la empresa los necesite. Un archivo eliminado va a la papelera
+de Google Drive, donde puede recuperarse durante 30 días antes de su borrado definitivo. Los
+registros de actividad se conservan para fines de auditoría interna.</p>
+
+<h2>Tus derechos</h2>
+<p>Cualquier usuario puede solicitar el acceso, la rectificación o la eliminación de sus datos
+personales, así como la baja de su cuenta, escribiendo a
+<a href="mailto:gestion.obrasperu@gmail.com">gestion.obrasperu@gmail.com</a>.</p>
+
+<h2>Seguridad</h2>
+<p>El acceso a la plataforma se hace siempre sobre conexión cifrada (HTTPS). Las contraseñas se
+guardan con Argon2id, las credenciales de Google con cifrado AES-256-GCM, y cada acceso a un
+documento queda registrado. Ningún usuario recibe credenciales de la cuenta de Google.</p>
+
+<h2>Cambios en esta política</h2>
+<p>Si esta política cambia, se actualizará esta misma página junto con su fecha.</p>
+
+<footer>
+  DocuHub — Constructora Pesam ·
+  <a href="/legal/terminos.html">Condiciones del Servicio</a>
+</footer>
+
+</body>
+</html>
