@@ -11,10 +11,12 @@ Vas a usar una cuenta **Gmail normal** (no Google Workspace) y quieres seguir en
 tu cuenta para subir cosas a mano. Eso está previsto, pero hay tres cosas que debes saber antes de
 empezar, porque cambian decisiones:
 
-**1. Tienes 15 GB, compartidos con Gmail y Google Fotos.**
-Ese es el techo real de la plataforma. Compruébalo en <https://one.google.com/storage>. Cuando te
-acerques, las salidas son: enlazar una segunda cuenta de Google (la plataforma admite varias, botón
-*Conectar cuenta*), o pasar a Google One / Workspace.
+**1. Tienes 2 TB, no 15 GB.**
+La cuenta resulto tener Google One con 2 TB, de los que ya hay ~38 GB ocupados por el correo y las
+fotos. Espacio de sobra: son unas 400 horas de video de obra, o decenas de miles de planos. Lo
+compruebas en <https://one.google.com/storage>, y el panel de Administracion lo muestra actualizado.
+Si algun dia te acercas al limite, la salida es enlazar una segunda cuenta de Google — la plataforma
+admite varias con el boton *Conectar cuenta*.
 
 **2. Publica la aplicación en Google Cloud, no la dejes en modo «Prueba».**
 Esto es lo importante. En el paso 3 vas a crear la pantalla de consentimiento como **Externa**. Si

@@ -175,3 +175,28 @@ Eso es el «administrar por completo los usos» funcionando de punta a punta.
 | La subida se corta al 100 % sin confirmar | La sesión resumible caducó | Vuelve a subir; el registro anterior se limpia solo |
 | `no hay ninguna cuenta de Google Drive conectada` | Falta el paso 3, o la cuenta quedó en estado `error` | Reconecta desde Administración → Google Drive |
 | El contenedor `app` reinicia en bucle | Falta `APP_ENCRYPTION_KEY` o la base no arrancó | `docker compose logs app` dice cuál de las dos |
+
+---
+
+## Prueba de extremo a extremo ya ejecutada — 2026-09-22
+
+Esto no es un guion pendiente: se ejecutó contra la instalación real, por el dominio, y estos fueron
+los resultados.
+
+| Paso | Resultado |
+|---|---|
+| Publicar la app en Google Cloud | Estado **En producción** |
+| Permisos configurados | Solo no sensibles: `drive.file`, `userinfo.email`, `userinfo.profile`, `openid` |
+| Pantalla de consentimiento | **Sin advertencia de app no verificada** |
+| Conectar `gestion.obrasperu@gmail.com` | Cuenta activa, carpeta raíz `DocuHub` creada en Drive |
+| Espacio detectado | **38.4 GB de 2.0 TB** (2%) |
+| Crear carpeta | Creada en la plataforma y en Drive |
+| Subir archivo de 3 MB | Completado; **el MD5 que devuelve Google coincide con el local** |
+| Descargar | **Idéntico byte a byte** al original |
+| Enlace público con contraseña, caducidad y tope de descargas | Creado |
+| Abrir el enlace sin la contraseña | **HTTP 401**, como debe ser |
+| Desbloquear y descargar | HTTP 200, archivo íntegro |
+| Limpieza | Enlace revocado, archivo y carpeta de prueba eliminados |
+
+Lo que queda por hacer es de uso, no de instalación: cambiar la contraseña temporal del
+administrador, crear las cuentas del personal y empezar a subir documentos.
