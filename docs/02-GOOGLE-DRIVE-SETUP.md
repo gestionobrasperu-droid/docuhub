@@ -27,17 +27,25 @@ avanzada → Ir a DocuHub (no seguro)**. Es esperado y correcto: la aplicación 
 laptop y nadie más la usa. La verificación formal de Google solo hace falta para distribuir una app
 a terceros; aquí el único que autoriza eres tú, con tu propia cuenta.
 
-**3. Como abrirás el Drive a mano, usa el permiso completo.**
-Deja `DRIVE_SCOPE=https://www.googleapis.com/auth/drive` en el `.env` (es el valor por defecto).
-El permiso reducido `drive.file` solo dejaría a la plataforma ver los archivos que ella misma creó:
-lo que tú arrastraras desde drive.google.com sería invisible para DocuHub.
+**3. Usa el permiso `drive.file`, no el completo.**
+Esta recomendacion cambio despues de chocar con la realidad: el permiso completo `drive` esta
+clasificado por Google como *restringido*, y publicar una app que lo pide desemboca en su
+verificacion formal — justificaciones por escrito, video de demostracion y semanas de espera.
 
-Con el permiso completo, después de subir algo a mano entras a **Administración → Google Drive →
-Escanear Drive** y esos archivos quedan registrados en la plataforma, con sus permisos, cuotas y
-auditoría, igual que si los hubieras subido desde la web.
+El permiso `drive.file` es *no sensible*: se publica sin verificacion y funciona hoy mismo. Y le
+basta a DocuHub para todo lo que hace, porque gestiona su propia carpeta: subir, descargar,
+versionar, compartir por enlace, auditar y aplicar cuotas.
 
-> Trabaja siempre dentro de la carpeta **DocuHub** que la plataforma crea en tu Drive. Lo que dejes
-> fuera de ella no se escanea.
+```ini
+DRIVE_SCOPE=https://www.googleapis.com/auth/drive.file
+```
+
+**Lo que pierdes con ello:** lo que arrastres a mano desde drive.google.com queda fuera del alcance
+de la plataforma y *Escanear Drive* no lo encontrara. Sube esos archivos desde la propia plataforma
+y el resultado es el mismo — de hecho mejor, porque asi nacen ya con su propietario, su cuota y su
+registro de auditoria.
+
+El detalle completo, y que hacer si algun dia necesitas el acceso total, esta en el apartado 8.
 
 Y como `DRIVE_ID` es solo para Unidades Compartidas de Workspace, en tu caso **déjalo vacío**.
 
@@ -146,3 +154,69 @@ Cuando te acerques al límite tienes dos salidas sin cambiar de plataforma:
 - **Cuota de peticiones:** 12 000 por minuto por proyecto. La plataforma reintenta con retroceso
   exponencial al recibir `403 rateLimitExceeded` o `429`, así que no tendrás que hacer nada.
 - Un archivo individual puede pesar hasta **5 TB**.
+
+---
+
+## 8. Si Google te pide justificaciones y un vídeo: estás en el camino equivocado
+
+Es el error más fácil de cometer y el que más tiempo cuesta. Si en **Centro de verificación** ves
+mensajes como *«Faltan los siguientes campos: justificación del permiso, vídeo de demostración»* o
+apelaciones sobre tu página principal, has entrado en la **verificación formal de Google**: un
+proceso de semanas, pensado para aplicaciones que se distribuyen a miles de usuarios desconocidos.
+
+**Tú no lo necesitas.** La aplicación es tuya, corre en tu laptop y el único que la autoriza eres tú
+sobre tu propio Drive. Sal de ahí y haz esto:
+
+### 8.1 — Limpia los permisos que no usas
+
+En **Acceso a los datos** aparecerán permisos que la plataforma nunca pide: BigQuery, Cloud Storage,
+`cloud-platform`… Se cuelan al habilitar APIs en el proyecto, y son justo lo que hace que Google te
+trate como una app que necesita auditoría completa.
+
+Quita todos y deja **exactamente estos tres**:
+
+```
+https://www.googleapis.com/auth/drive.file
+https://www.googleapis.com/auth/userinfo.email
+openid
+```
+
+### 8.2 — Usa el permiso `drive.file`, no `drive`
+
+Esta es la decisión que lo cambia todo:
+
+| Permiso | Qué alcanza | Qué te exige Google |
+|---|---|---|
+| `drive` | Todo el contenido del Drive | **Restringido**: verificación formal, con vídeo y revisión de seguridad |
+| `drive.file` ⭐ | Solo los archivos que la app crea | **No sensible**: sin verificación, publicas y funcionas |
+
+DocuHub crea su propia carpeta y todo lo que se sube pasa por él, así que `drive.file` le basta para
+funcionar al 100%: subir, descargar, versionar, compartir, auditar y aplicar cuotas.
+
+**Lo único que pierdes:** si arrastras un archivo a mano desde drive.google.com, DocuHub no lo verá
+y *Escanear Drive* no lo encontrará. Súbelo desde la plataforma y ya está.
+
+En `deploy/.env`:
+
+```ini
+DRIVE_SCOPE=https://www.googleapis.com/auth/drive.file
+```
+
+Y aplica el cambio con `docker compose up -d`. El panel de Administración muestra en qué modo estás.
+
+### 8.3 — Publica y conecta
+
+1. **Público** → **Publicar app** → confirmar. Estado: *En producción*.
+2. En la plataforma: **Administración → Google Drive → Conectar cuenta**.
+3. Si aparece *«Google no ha verificado esta aplicación»* → **Configuración avanzada** → **Ir a
+   DocuHub (no seguro)**. Con `drive.file` suele no aparecer siquiera.
+
+### 8.4 — Si algún día necesitas el acceso completo
+
+Si la empresa crece y de verdad hace falta que DocuHub vea archivos subidos a mano, entonces sí toca
+pasar la verificación con el permiso `drive`. Necesitarás: la app publicada, política de privacidad
+y términos accesibles (ya los tienes en `/legal/`), una página principal que explique el propósito
+(`/acerca.html`), el dominio verificado en Google Search Console, y un vídeo de YouTube mostrando el
+flujo de consentimiento y el uso de los datos. Cuenta varias semanas de ida y vuelta.
+
+Mientras tanto, la plataforma funciona sin nada de eso.

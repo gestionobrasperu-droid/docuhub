@@ -300,9 +300,15 @@ func (s *Server) handleDriveStatus(w http.ResponseWriter, r *http.Request) {
 	root, rootErr := s.repo.RootFolder(r.Context())
 
 	out := map[string]any{
-		"accounts":   accounts,
-		"configured": s.cfg.DriveConfigured(),
+		"accounts":     accounts,
+		"configured":   s.cfg.DriveConfigured(),
 		"redirect_uri": s.cfg.RedirectURI(),
+		"scope":        s.cfg.DriveScope,
+		// Con drive.file la plataforma solo ve lo que ella misma crea. Es el
+		// permiso que Google considera no sensible, asi que no exige pasar por
+		// su verificacion; a cambio, lo que se suba a mano desde drive.google.com
+		// queda fuera de su alcance y el escaneo no lo encontrara.
+		"scope_limited": strings.HasSuffix(s.cfg.DriveScope, "drive.file"),
 	}
 	if rootErr == nil {
 		out["root_folder"] = root

@@ -128,11 +128,22 @@ function DriveTab({ isAdmin, onChange }: { isAdmin: boolean; onChange: () => voi
           </p>
         )}
 
-        <p className="muted">
-          <b>Escanear Drive</b> registra en la plataforma los archivos y carpetas que hayas subido
-          a mano desde drive.google.com dentro de la carpeta <b>DocuHub</b>. A partir de ese momento
-          quedan bajo el mismo control de permisos, cuotas y auditoría que los subidos desde aquí.
-        </p>
+        {data?.scope_limited ? (
+          <p className="muted">
+            <b>Modo de acceso limitado</b> (permiso <span className="mono">drive.file</span>): la
+            plataforma solo ve los archivos que ella misma crea. Es el permiso que Google considera
+            no sensible, asi que no exige pasar por su proceso de verificacion. A cambio, lo que
+            subas a mano desde drive.google.com queda fuera de su alcance y <b>Escanear Drive</b> no
+            lo encontrara: sube esos archivos desde aqui.
+          </p>
+        ) : (
+          <p className="muted">
+            <b>Escanear Drive</b> registra en la plataforma los archivos y carpetas que hayas subido
+            a mano desde drive.google.com dentro de la carpeta <b>DocuHub</b>. A partir de ese
+            momento quedan bajo el mismo control de permisos, cuotas y auditoria que los subidos
+            desde aqui.
+          </p>
+        )}
 
         {accounts.length === 0 ? (
           <p className="muted">Todavía no hay ninguna cuenta conectada.</p>

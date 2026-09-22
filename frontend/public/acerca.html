@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DocuHub — Gestión documental de Constructora Pesam</title>
+<meta name="description" content="DocuHub es la plataforma interna de Constructora Pesam para almacenar, compartir y auditar documentos de obra sobre Google Drive.">
+<style>
+  :root { color-scheme: light dark; --a:#2563eb; }
+  body { font: 16px/1.65 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+         max-width: 46rem; margin: 0 auto; padding: 3rem 1.2rem 5rem; }
+  h1 { font-size: 2rem; margin: 0 0 .3rem; letter-spacing: -.02em; }
+  .sub { color: #6b7280; font-size: 1.05rem; margin-top: 0; }
+  h2 { font-size: 1.15rem; margin-top: 2.4rem; }
+  ul { padding-left: 1.2rem; }
+  li { margin: .4rem 0; }
+  .btn { display:inline-block; background: var(--a); color:#fff; text-decoration:none;
+         padding:.6rem 1.1rem; border-radius:8px; font-weight:600; margin-top:1rem; }
+  .caja { border:1px solid rgba(127,127,127,.35); border-radius:10px; padding:1rem 1.2rem; margin-top:1.5rem; }
+  footer { margin-top:3rem; padding-top:1rem; border-top:1px solid rgba(127,127,127,.3);
+           color:#6b7280; font-size:.9rem; }
+  a { color: var(--a); }
+</style>
+</head>
+<body>
+
+<h1>DocuHub</h1>
+<p class="sub">Plataforma de gestión documental de <strong>Constructora Pesam</strong></p>
+
+<p>DocuHub es la herramienta interna con la que Constructora Pesam guarda, comparte y controla sus
+documentos de obra: planos, expedientes técnicos, valorizaciones, fotografías y videos de avance.
+Está pensada para archivos pesados, de varios gigabytes, que no caben cómodamente en el correo.</p>
+
+<h2>Qué hace</h2>
+<ul>
+  <li><strong>Almacena en Google Drive.</strong> Los documentos viven en la cuenta de Google Drive de
+      la empresa. DocuHub crea y gestiona su propia carpeta dentro de esa cuenta.</li>
+  <li><strong>Controla quién ve qué.</strong> Cada carpeta y cada archivo tiene permisos: ver,
+      descargar, editar o administrar. Las carpetas sensibles pueden restringirse para que solo
+      accedan las personas autorizadas expresamente.</li>
+  <li><strong>Comparte hacia fuera con control.</strong> Genera enlaces de descarga para clientes y
+      supervisores, con contraseña, fecha de caducidad y número máximo de descargas. Se revocan en
+      cualquier momento.</li>
+  <li><strong>Registra todo.</strong> Quién subió, quién descargó, cuándo y desde qué dirección IP.</li>
+  <li><strong>Limita el consumo.</strong> Cada usuario tiene su cuota de almacenamiento y su límite
+      mensual de descarga.</li>
+</ul>
+
+<h2>Por qué usa Google Drive</h2>
+<p>El almacenamiento es la cuenta de Drive de la empresa; DocuHub pone encima la capa de control.
+Los usuarios de la plataforma nunca reciben credenciales de Google ni enlaces directos a Drive:
+todo pasa por DocuHub, que comprueba permisos, cuota y vigencia en cada descarga. La autorización de
+acceso a Drive la concede una sola vez el titular de la cuenta de la empresa, mediante OAuth 2.0.</p>
+
+<div class="caja">
+  <strong>Acceso restringido.</strong> DocuHub no es un servicio abierto al público. Las cuentas las
+  crea un administrador de Constructora Pesam y se otorgan de forma nominal al personal y a
+  colaboradores autorizados.
+  <br>
+  <a class="btn" href="/">Entrar a la plataforma</a>
+</div>
+
+<h2>Contacto</h2>
+<p>Constructora Pesam —
+<a href="mailto:gestion.obrasperu@gmail.com">gestion.obrasperu@gmail.com</a></p>
+
+<footer>
+  <a href="/legal/privacidad.html">Política de Privacidad</a> ·
+  <a href="/legal/terminos.html">Condiciones del Servicio</a>
+</footer>
+
+</body>
+</html>
