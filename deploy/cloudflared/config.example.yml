@@ -1,0 +1,29 @@
+# Configuración del túnel cuando se ejecuta cloudflared como servicio de
+# Windows (en lugar del contenedor). Copiar a:
+#   %USERPROFILE%\.cloudflared\config.yml
+#
+# Pasos previos:
+#   cloudflared tunnel login
+#   cloudflared tunnel create docuhub
+#   cloudflared tunnel route dns docuhub docs.constructorapesam.com
+#   cloudflared service install
+
+tunnel: PEGA-AQUI-EL-UUID-DEL-TUNEL
+credentials-file: C:\Users\HP\.cloudflared\PEGA-AQUI-EL-UUID-DEL-TUNEL.json
+
+# Sin límite de tiempo para subidas y descargas largas.
+originRequest:
+  connectTimeout: 30s
+  tlsTimeout: 30s
+  tcpKeepAlive: 30s
+  noHappyEyeballs: false
+  keepAliveConnections: 100
+  keepAliveTimeout: 90s
+  httpHostHeader: docs.constructorapesam.com
+  disableChunkedEncoding: false
+
+ingress:
+  - hostname: docs.constructorapesam.com
+    service: http://localhost:8080
+  # Todo lo que no coincida se rechaza.
+  - service: http_status:404

@@ -1,0 +1,100 @@
+# DocuHub — pila completa para la laptop.
+#
+#   docker compose up -d --build     levanta todo
+#   docker compose logs -f app       ver el log (ahí sale la clave del admin)
+#   docker compose down              detiene sin borrar datos
+#
+# Los datos de Postgres viven en un volumen con nombre: sobreviven a
+# reconstrucciones de la imagen y a reinicios de la laptop.
+
+name: docuhub
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-docuhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:-docuhub}
+      # Locale en español para ordenar nombres con tildes correctamente.
+      LANG: es_ES.utf8
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-docuhub} -d ${POSTGRES_DB:-docuhub}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Sin puertos publicados: solo la aplicación la alcanza, por la red interna.
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-prod}
+      APP_PORT: '8080'
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?ejecuta scripts/setup-windows.ps1 para generarla}
+      DATABASE_URL: postgres://${POSTGRES_USER:-docuhub}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-docuhub}?sslmode=disable
+
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      DRIVE_SCOPE: ${DRIVE_SCOPE:-https://www.googleapis.com/auth/drive}
+      DRIVE_ID: ${DRIVE_ID:-}
+      DRIVE_ROOT_FOLDER: ${DRIVE_ROOT_FOLDER:-DocuHub}
+
+      SESSION_TTL: ${SESSION_TTL:-12h}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      DEFAULT_QUOTA_BYTES: ${DEFAULT_QUOTA_BYTES:-10GB}
+      DEFAULT_BANDWIDTH_BYTES: ${DEFAULT_BANDWIDTH_BYTES:-50GB}
+      MAX_CHUNK_BYTES: ${MAX_CHUNK_BYTES:-16MB}
+
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@localhost}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+    ports:
+      # Expuesto solo a la propia laptop; al mundo llega por el túnel.
+      - '127.0.0.1:8080:8080'
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+  # Publica la plataforma en el dominio de la empresa sin abrir puertos del
+  # router. Se activa con:  docker compose --profile tunnel up -d
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ['tunnel']
+    depends_on: [app]
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    # El token se saca del panel de Cloudflare Zero Trust al crear el túnel.
+
+  # Alternativa a Cloudflare si algún día se usa una IP pública propia:
+  # certificados TLS automáticos con Let's Encrypt.
+  #   docker compose --profile caddy up -d
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    profiles: ['caddy']
+    depends_on: [app]
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+
+volumes:
+  db_data:
+  caddy_data:
+  caddy_config:

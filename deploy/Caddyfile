@@ -1,0 +1,29 @@
+# Solo se usa con el perfil `caddy` (IP pública propia).
+# Con Cloudflare Tunnel este archivo no interviene: el TLS lo pone Cloudflare.
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Las transferencias de archivos grandes necesitan tiempos amplios.
+	reverse_proxy app:8080 {
+		flush_interval -1
+		transport http {
+			read_timeout 6h
+			write_timeout 6h
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		-Server
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}

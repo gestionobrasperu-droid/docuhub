@@ -1,0 +1,37 @@
+# Secretos: nunca deben salir de la laptop.
+deploy/.env
+*.env
+!deploy/.env.example
+*.pem
+*.key
+.cloudflared/
+credentials.json
+client_secret*.json
+
+# Datos locales: volcados de la base, nunca el esquema.
+backups/
+logs/
+*.sql
+*.sql.zip
+# Las migraciones sí se versionan: son parte del código, no datos.
+!backend/internal/store/migrations/*.sql
+
+# Dependencias y compilados
+node_modules/
+frontend/dist/
+*.exe
+docuhub
+backend/docuhub
+
+# El frontend compilado se genera en el build; solo se versiona el marcador
+# que necesita go:embed para que `go build` funcione sin Node instalado.
+backend/web/dist/*
+!backend/web/dist/index.html
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
