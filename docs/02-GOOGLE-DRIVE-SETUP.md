@@ -5,6 +5,44 @@ para pegar en `deploy/.env`, y la plataforma podrá escribir en el Drive de la e
 
 ---
 
+## 0. Tu caso concreto: `gestion.obrasperu@gmail.com`
+
+Vas a usar una cuenta **Gmail normal** (no Google Workspace) y quieres seguir entrando al Drive por
+tu cuenta para subir cosas a mano. Eso está previsto, pero hay tres cosas que debes saber antes de
+empezar, porque cambian decisiones:
+
+**1. Tienes 15 GB, compartidos con Gmail y Google Fotos.**
+Ese es el techo real de la plataforma. Compruébalo en <https://one.google.com/storage>. Cuando te
+acerques, las salidas son: enlazar una segunda cuenta de Google (la plataforma admite varias, botón
+*Conectar cuenta*), o pasar a Google One / Workspace.
+
+**2. Publica la aplicación en Google Cloud, no la dejes en modo «Prueba».**
+Esto es lo importante. En el paso 3 vas a crear la pantalla de consentimiento como **Externa**. Si
+la dejas en estado *Prueba/Testing*, **Google caduca el permiso cada 7 días** y tendrías que volver
+a conectar la cuenta cada semana. Para evitarlo, en *Pantalla de consentimiento de OAuth* pulsa
+**PUBLICAR APLICACIÓN** y confirma. Pasa al estado *En producción*.
+
+Al conectar verás una advertencia de «Google no ha verificado esta aplicación» → **Configuración
+avanzada → Ir a DocuHub (no seguro)**. Es esperado y correcto: la aplicación es tuya, corre en tu
+laptop y nadie más la usa. La verificación formal de Google solo hace falta para distribuir una app
+a terceros; aquí el único que autoriza eres tú, con tu propia cuenta.
+
+**3. Como abrirás el Drive a mano, usa el permiso completo.**
+Deja `DRIVE_SCOPE=https://www.googleapis.com/auth/drive` en el `.env` (es el valor por defecto).
+El permiso reducido `drive.file` solo dejaría a la plataforma ver los archivos que ella misma creó:
+lo que tú arrastraras desde drive.google.com sería invisible para DocuHub.
+
+Con el permiso completo, después de subir algo a mano entras a **Administración → Google Drive →
+Escanear Drive** y esos archivos quedan registrados en la plataforma, con sus permisos, cuotas y
+auditoría, igual que si los hubieras subido desde la web.
+
+> Trabaja siempre dentro de la carpeta **DocuHub** que la plataforma crea en tu Drive. Lo que dejes
+> fuera de ella no se escanea.
+
+Y como `DRIVE_ID` es solo para Unidades Compartidas de Workspace, en tu caso **déjalo vacío**.
+
+---
+
 ## 1. Elegir el modo de enlace
 
 | Modo | Cuándo usarlo | Cómo se ve |

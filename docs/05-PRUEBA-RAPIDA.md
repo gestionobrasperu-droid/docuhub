@@ -30,6 +30,10 @@ Añade también la de producción, así no repites el trámite después:
 https://docs.constructorapesam.com/api/admin/drive/callback
 ```
 
+Y no te saltes el apartado 0 de ese documento: con una cuenta Gmail hay que **publicar** la
+aplicación en Google Cloud, o el permiso caduca cada 7 días y tendrás que reconectar la cuenta cada
+semana.
+
 ## Paso 2 — Configurar y levantar
 
 ```powershell
@@ -106,6 +110,20 @@ Ahora la parte interesante, **restringir una carpeta**:
 
 Eso es el modelo completo: las carpetas normales se rigen por el rol, las restringidas solo por
 permisos explícitos, y los permisos solo suman.
+
+## Paso 5.5 — Probar el escaneo del Drive
+
+Esto es para tu forma de trabajar: seguir usando drive.google.com directamente.
+
+1. Entra a <https://drive.google.com> con `gestion.obrasperu@gmail.com`.
+2. Dentro de la carpeta **DocuHub**, crea una carpeta `Pruebas-Manual` y arrastra ahí dos archivos.
+3. Vuelve a DocuHub: **Administración → Google Drive → Escanear Drive**.
+4. Te dirá cuántas carpetas y archivos nuevos importó.
+5. Ve a **Archivos**: la carpeta y sus archivos ya están, y puedes darles permisos, compartirlos por
+   enlace y ver quién los descarga — exactamente igual que si los hubieras subido desde la web.
+
+El escaneo es manual a propósito: recorrer el Drive entero cada pocos minutos gastaría cuota del API
+sin necesidad. Si algún día quieres que sea automático, se agenda con el Programador de tareas.
 
 ## Paso 6 — Compartir con alguien de fuera (enlace público)
 
