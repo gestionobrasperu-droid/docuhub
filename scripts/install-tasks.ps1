@@ -1,20 +1,39 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Registra en el Programador de tareas de Windows todo lo que debe ocurrir
-    solo: arranque, watchdog y respaldo diario.
+    Registra en el Programador de tareas todo lo que debe ocurrir solo:
+    arranque, watchdog y respaldo diario.
 
 .DESCRIPTION
-    Ejecutar como administrador. Crea tres tareas:
+    Ejecutar como administrador. Crea tres tareas que corren como SYSTEM, asi
+    que funcionan aunque nadie tenga la sesion iniciada:
 
-      DocuHub-Arranque   al encender la laptop, levanta los contenedores
-      DocuHub-Watchdog   cada 5 minutos, comprueba y recupera el servicio
-      DocuHub-Respaldo   cada día a las 03:15, respalda la base
+      DocuHub-Arranque   al encender, espera al motor de Docker y levanta la pila
+      DocuHub-Watchdog   cada 5 minutos, comprueba /healthz y recupera el servicio
+      DocuHub-Respaldo   cada dia a las 03:15, respalda la base de datos
 
-    Las tareas corren como SYSTEM, así funcionan aunque nadie inicie sesión.
-    Excepción: Docker Desktop necesita una sesión de usuario activa; si usas
-    Docker Desktop en vez de Docker Engine en WSL2, activa el inicio de sesión
-    automático de Windows o deja la sesión abierta.
+    Ojo al comprobarlas: una tarea que corre como SYSTEM con nivel mas alto
+    NO es visible desde una sesion de PowerShell normal. Get-ScheduledTask
+    devuelve cero resultados y schtasks /run responde "Acceso denegado",
+    aunque la tarea exista y se este ejecutando puntualmente. Para verlas hay
+    que consultar elevado:
+
+        Start-Process powershell -Verb RunAs -ArgumentList '-Command','schtasks /query /fo table /nh | findstr DocuHub'
+
+    La prueba que si funciona sin privilegios es mirar el resultado de su
+    trabajo:  Get-Content logs\health.log -Tail 5
+
+    Se usa schtasks.exe en lugar de Register-ScheduledTask porque devuelve el
+    resultado de cada alta en el acto, y este script lo verifica antes de dar
+    nada por bueno.
+
+    Docker Desktop necesita una sesion de usuario iniciada. Si la laptop se
+    reinicia sin que nadie entre, la tarea de arranque esperara al motor y
+    acabara fallando: activa el inicio de sesion automatico de Windows, o
+    pasa a Docker Engine sobre WSL2, que corre como servicio real.
+
+.PARAMETER Remove
+    Elimina las tres tareas en lugar de crearlas.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\scripts\install-tasks.ps1
@@ -25,7 +44,7 @@ param(
     [switch]$Remove
 )
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
 
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -34,79 +53,67 @@ if (-not $isAdmin) {
     throw 'Este script necesita PowerShell como administrador.'
 }
 
-$tasks = @('DocuHub-Arranque', 'DocuHub-Watchdog', 'DocuHub-Respaldo')
+$names = @('DocuHub-Arranque', 'DocuHub-Watchdog', 'DocuHub-Respaldo')
 
 if ($Remove) {
-    foreach ($t in $tasks) {
-        if (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue) {
-            Unregister-ScheduledTask -TaskName $t -Confirm:$false
-            Write-Host "  eliminada: $t" -ForegroundColor Yellow
-        }
+    foreach ($n in $names) {
+        schtasks /delete /tn $n /f 2>&1 | Out-Null
+        Write-Host "  eliminada: $n" -ForegroundColor Yellow
     }
     return
 }
 
-function Register-DocuHubTask {
-    param(
-        [string]$Name,
-        [string]$Arguments,
-        $Trigger,
-        [string]$Description
-    )
-
-    if (Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue) {
-        Unregister-ScheduledTask -TaskName $Name -Confirm:$false
-    }
-
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $Arguments
-    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-    $settings = New-ScheduledTaskSettingsSet `
-        -AllowStartIfOnBatteries `
-        -DontStopIfGoingOnBatteries `
-        -StartWhenAvailable `
-        -RestartCount 3 `
-        -RestartInterval (New-TimeSpan -Minutes 5) `
-        -ExecutionTimeLimit (New-TimeSpan -Hours 2)
-
-    Register-ScheduledTask -TaskName $Name -Action $action -Trigger $Trigger `
-        -Principal $principal -Settings $settings -Description $Description | Out-Null
-
-    Write-Host "  [ok] $Name" -ForegroundColor Green
+$ps = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+function Script-Cmd($file) {
+    "`"$ps`" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$root\scripts\$file`""
 }
+
+$tasks = @(
+    @{ Name = 'DocuHub-Arranque'
+       Cmd  = (Script-Cmd 'boot-start.ps1')
+       # 90 s de margen para que Docker arranque antes que la tarea.
+       Args = @('/sc', 'ONSTART', '/delay', '0001:30') }
+
+    @{ Name = 'DocuHub-Watchdog'
+       Cmd  = (Script-Cmd 'health-check.ps1')
+       Args = @('/sc', 'MINUTE', '/mo', '5') }
+
+    @{ Name = 'DocuHub-Respaldo'
+       Cmd  = (Script-Cmd 'backup.ps1')
+       Args = @('/sc', 'DAILY', '/st', '03:15') }
+)
 
 Write-Host "`n=== Registrando tareas ===" -ForegroundColor Cyan
 
-# 1) Arranque: los contenedores tienen restart:unless-stopped, pero si Docker
-#    tarda en levantar tras un corte de luz, esto lo asegura.
-$startupScript = "Start-Sleep -Seconds 90; Set-Location '$root\deploy'; docker compose up -d"
-Register-DocuHubTask -Name 'DocuHub-Arranque' `
-    -Arguments "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command `"$startupScript`"" `
-    -Trigger (New-ScheduledTaskTrigger -AtStartup) `
-    -Description 'Levanta DocuHub al encender la laptop (espera 90 s a que Docker esté listo).'
+foreach ($t in $tasks) {
+    schtasks /delete /tn $t.Name /f 2>&1 | Out-Null
 
-# 2) Watchdog cada 5 minutos, indefinidamente.
-$watchTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) `
-    -RepetitionInterval (New-TimeSpan -Minutes 5)
-Register-DocuHubTask -Name 'DocuHub-Watchdog' `
-    -Arguments "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$root\scripts\health-check.ps1`"" `
-    -Trigger $watchTrigger `
-    -Description 'Comprueba /healthz cada 5 minutos y reinicia el servicio si no responde.'
+    $argList = @('/create', '/tn', $t.Name, '/tr', $t.Cmd, '/ru', 'SYSTEM', '/rl', 'HIGHEST', '/f') + $t.Args
+    $out = & schtasks @argList 2>&1
 
-# 3) Respaldo diario de madrugada, cuando nadie usa la plataforma.
-Register-DocuHubTask -Name 'DocuHub-Respaldo' `
-    -Arguments "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$root\scripts\backup.ps1`"" `
-    -Trigger (New-ScheduledTaskTrigger -Daily -At '03:15') `
-    -Description 'Respaldo diario de la base de datos de DocuHub.'
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  [ok] $($t.Name)" -ForegroundColor Green
+    } else {
+        Write-Host "  [!]  $($t.Name): $out" -ForegroundColor Red
+    }
+}
+
+# Verificacion real: que el Programador las devuelva, no que el comando
+# anterior dijera que si.
+Write-Host "`n=== Comprobacion ===" -ForegroundColor Cyan
+$found = schtasks /query /fo csv /nh 2>&1 | Select-String 'DocuHub'
+if ($found) {
+    $found | ForEach-Object { Write-Host "  $($_.Line)" }
+} else {
+    Write-Host '  [!]  Ninguna tarea quedo registrada. Revisa el Programador de tareas.' -ForegroundColor Red
+}
 
 Write-Host @"
 
-Listo. Para comprobarlas:
-    Get-ScheduledTask -TaskName 'DocuHub-*' | Format-Table TaskName, State
-
-Para ejecutar una ahora mismo y ver si funciona:
-    Start-ScheduledTask -TaskName 'DocuHub-Watchdog'
+Para ejecutar una ahora y ver si funciona:
+    schtasks /run /tn DocuHub-Watchdog
     Get-Content logs\health.log -Tail 20
 
-Para quitarlas todas:
+Para quitarlas:
     .\scripts\install-tasks.ps1 -Remove
 "@ -ForegroundColor Cyan

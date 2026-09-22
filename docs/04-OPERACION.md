@@ -109,3 +109,29 @@ Aun así, guarda esa clave en el gestor de contraseñas de la empresa.
 
 **Si alguien borra archivos por error:** van a la papelera de Google Drive, donde viven 30 días.
 Se restauran desde drive.google.com y vuelven a aparecer en DocuHub porque el id no cambia.
+
+---
+
+## Comprobar las tareas automáticas (y no asustarse)
+
+Las tres tareas (`DocuHub-Arranque`, `DocuHub-Watchdog`, `DocuHub-Respaldo`) corren como **SYSTEM**
+con nivel más alto. Eso tiene una consecuencia que despista mucho: **desde una terminal normal no se
+ven**. `Get-ScheduledTask -TaskName 'DocuHub-*'` devuelve cero resultados y `schtasks /run` responde
+«Acceso denegado», aunque las tareas existan y se estén ejecutando cada 5 minutos.
+
+Para verlas hay que consultar con privilegios:
+
+```powershell
+Start-Process powershell -Verb RunAs -ArgumentList '-Command','schtasks /query /fo table /nh | findstr DocuHub; pause'
+```
+
+La comprobación que sí funciona sin privilegios —y la que de verdad importa, porque mide el trabajo
+hecho y no la existencia del registro— es mirar el log:
+
+```powershell
+Get-Content logs\health.log -Tail 10
+```
+
+Una línea `[OK] servicio respondiendo; disco_libre=…GB temp=…C` cada cinco minutos significa que el
+watchdog está vivo y que la plataforma responde. Si el log deja de crecer, la tarea es lo primero
+que hay que revisar.
