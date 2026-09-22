@@ -226,12 +226,26 @@ $isAdmin = (New-Object Security.Principal.WindowsPrincipal(
 $svc = Get-Service -Name cloudflared -ErrorAction SilentlyContinue
 
 if ($svc) {
-    Write-Ok "Ya instalado (estado: $($svc.Status)). Reiniciando para aplicar la config."
-    if ($isAdmin) {
-        Restart-Service cloudflared -Force
-        Write-Ok "Servicio reiniciado."
+    Write-Ok "Ya instalado (estado: $($svc.Status))."
+
+    # Si el ImagePath no lleva --config, el servicio corre sin configuracion y
+    # Cloudflare devuelve 530 aunque el servicio figure como 'Running'.
+    $have = (Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\cloudflared' `
+                              -ErrorAction SilentlyContinue).ImagePath
+    if ($have -notmatch '--config') {
+        Write-Fail "El servicio esta registrado SIN --config: no enruta nada (error 530)."
+        Write-Host  "    Corrigelo con, en PowerShell COMO ADMINISTRADOR:"
+        Write-Host  "      .\setup-tunnel.ps1 -InstallService -SkipLogin"
+    } elseif ($isAdmin) {
+        # Restart-Service puede colgarse: el proceso no siempre atiende el SCM.
+        Get-Process cloudflared -ErrorAction SilentlyContinue |
+            ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 3
+        & sc.exe start cloudflared | Out-Null
+        Start-Sleep -Seconds 6
+        Write-Ok "Servicio reiniciado (estado: $((Get-Service cloudflared).Status))."
     } else {
-        Write-Warn "Ejecuta como administrador:  Restart-Service cloudflared"
+        Write-Warn "Para aplicar cambios de config, como administrador:  Restart-Service cloudflared"
     }
 } elseif ($InstallService) {
     if (-not $isAdmin) {
@@ -243,12 +257,42 @@ if ($svc) {
     & $cf service install
     Start-Sleep -Seconds 3
     $svc = Get-Service -Name cloudflared -ErrorAction SilentlyContinue
-    if ($svc) {
-        Set-Service -Name cloudflared -StartupType Automatic
-        if ($svc.Status -ne 'Running') { Start-Service cloudflared }
-        Write-Ok "Servicio instalado y en arranque automatico."
-    } else {
+    if (-not $svc) {
         Write-Fail "El servicio no quedo registrado."
+    } else {
+        # `cloudflared service install` (2026.9.1) registra el servicio SIN
+        # argumentos y no copia la configuracion a
+        # C:\Windows\System32\config\systemprofile\.cloudflared. Resultado: el
+        # servicio arranca, no encuentra config, no enruta nada, y Cloudflare
+        # devuelve 530. Hay que apuntar el ImagePath a la config a mano.
+        $key = 'HKLM:\SYSTEM\CurrentControlSet\Services\cloudflared'
+        $want = '"' + $cf + '" --config "' + $configPath + '" --no-autoupdate tunnel run'
+        $have = (Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).ImagePath
+
+        if ($have -ne $want) {
+            Write-Warn "ImagePath sin configuracion. Corrigiendo."
+            # El proceso no siempre responde al control de parada del SCM.
+            Get-Process cloudflared -ErrorAction SilentlyContinue |
+                ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+            Start-Sleep -Seconds 3
+            & sc.exe stop cloudflared | Out-Null
+            $n = 0
+            while ((Get-Service cloudflared -ErrorAction SilentlyContinue).Status -ne 'Stopped' -and $n -lt 15) {
+                Start-Sleep -Seconds 2; $n++
+            }
+            Set-ItemProperty -Path $key -Name ImagePath -Value $want
+            Write-Ok "ImagePath corregido."
+        }
+
+        # Reinicio automatico si el proceso muere.
+        & sc.exe failure cloudflared reset= 86400 actions= restart/5000/restart/10000/restart/30000 | Out-Null
+
+        Set-Service -Name cloudflared -StartupType Automatic
+        if ((Get-Service cloudflared).Status -ne 'Running') { & sc.exe start cloudflared | Out-Null }
+        Start-Sleep -Seconds 8
+        $st = (Get-Service cloudflared -ErrorAction SilentlyContinue).Status
+        if ($st -eq 'Running') { Write-Ok "Servicio instalado, corriendo y en arranque automatico." }
+        else                   { Write-Fail "El servicio quedo en estado '$st'." }
     }
 } else {
     Write-Warn "No instalado (no se paso -InstallService)."

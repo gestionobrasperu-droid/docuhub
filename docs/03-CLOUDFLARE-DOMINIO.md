@@ -1,7 +1,22 @@
 # Conectar constructorapesam.com con Cloudflare
 
-Guía específica para **este** dominio, con el estado real medido el 2026-09-22.
-No es genérica: los valores de abajo son los que tiene tu dominio ahora mismo.
+Guía específica para **este** dominio. No es genérica: los valores de abajo son
+los reales, medidos durante la migración.
+
+> ## ✅ ESTADO: MIGRACIÓN COMPLETADA — 2026-09-22
+>
+> | Elemento | Estado |
+> |---|---|
+> | Nameservers | `aleena.ns.cloudflare.com`, `arch.ns.cloudflare.com` — activos y propagados |
+> | Web de la empresa | `constructorapesam.com` y `www` → **HTTP 200**, servidas directo por GoDaddy (nube gris). Sin caída durante la migración |
+> | Túnel | `docuhub` · UUID `5c1c2722-4f02-4b01-995f-552fdb771086` |
+> | Servicio de Windows | `cloudflared` · **Running** · arranque **automático** · reinicio automático ante fallo |
+> | Conexiones | 4 activas (2× Lima `lim02`, 2× Santiago `scl06`) sobre QUIC |
+> | `test.constructorapesam.com` | **HTTP 200** — página de prueba del túnel |
+> | `docs.constructorapesam.com` | **502** — correcto: el túnel llega, falta levantar DocuHub en el 8080 |
+>
+> Las secciones 4 y 5 quedan como referencia histórica y para poder **revertir**.
+> El día a día está en las secciones 8 (añadir apps) y 11 (problemas conocidos).
 
 ---
 
@@ -213,17 +228,76 @@ si la sintaxis queda mal, el script restaura el respaldo solo.
 1. **Cloudflare Access** delante de `docs.*`: obliga a autenticarse con el Google de
    la empresa antes de que la petición toque la laptop. Zero Trust → Access →
    Applications.
-2. **Registros de correo defensivos.** El dominio no usa correo, así que conviene
-   impedir que alguien lo suplante:
+2. **Registros de correo defensivos.** El dominio no recibe correo (no hay MX).
+   Ya existe un `_dmarc` heredado de GoDaddy con `p=quarantine`; para cerrar del
+   todo la suplantación conviene endurecerlo y añadir los otros dos:
 
-   | Tipo | Nombre | Contenido |
-   |---|---|---|
-   | TXT | `@` | `v=spf1 -all` |
-   | TXT | `_dmarc` | `v=DMARC1; p=reject; rua=mailto:tu-correo@…` |
-   | TXT | `*._domainkey` | `v=DKIM1; p=` |
+   | Tipo | Nombre | Contenido | Estado |
+   |---|---|---|---|
+   | TXT | `@` | `v=spf1 -all` | falta |
+   | TXT | `_dmarc` | `v=DMARC1; p=reject; rua=mailto:gestion.obrasperu@gmail.com` | existe con `p=quarantine` |
+   | TXT | `*._domainkey` | `v=DKIM1; p=` | falta |
 
    Si algún día activas correo en el dominio, **hay que revertir esto primero** o
    tus propios correos se rechazarán.
 3. **Always Use HTTPS** y **Automatic HTTPS Rewrites**: SSL/TLS → Edge Certificates.
 4. **Modo de cifrado**: SSL/TLS → Overview → **Full (strict)**. Aplica a los
    subdominios proxeados; los grises (la web de GoDaddy) no se ven afectados.
+
+---
+
+## 11. Problemas conocidos (encontrados y resueltos en esta instalación)
+
+### 11.1 — El servicio dice `Running` pero todo devuelve error 530
+
+**El más importante.** `cloudflared service install` (versión 2026.9.1) registra
+el servicio **sin argumentos** y **no** copia la configuración a
+`C:\Windows\System32\config\systemprofile\.cloudflared`. El servicio arranca,
+figura como `Running`, pero corre sin configuración: no conoce ninguna regla de
+ingress y Cloudflare responde **530** en todos los hostnames.
+
+Comprobación:
+
+```powershell
+(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\cloudflared').ImagePath
+```
+
+Debe contener `--config`. Si solo aparece la ruta del `.exe`, está roto. Lo
+correcto es:
+
+```
+"C:\Program Files (x86)\cloudflared\cloudflared.exe" --config "C:\Users\HP\.cloudflared\config.yml" --no-autoupdate tunnel run
+```
+
+`setup-tunnel.ps1 -InstallService` ya detecta y corrige esto automáticamente.
+
+### 11.2 — `Restart-Service cloudflared` se queda colgado en `StopPending`
+
+Cuando el servicio corre sin configuración no atiende bien el control de parada
+del SCM. Hay que matar el proceso antes:
+
+```powershell
+Get-Process cloudflared | Stop-Process -Force
+sc.exe start cloudflared
+```
+
+### 11.3 — Diferenciar 530 de 502
+
+Son dos fallos distintos y se confunden con facilidad:
+
+| Código | Significado | Dónde mirar |
+|---|---|---|
+| **530** | Cloudflare no encuentra un túnel vivo para ese hostname | El servicio y su `ImagePath` (11.1) |
+| **502** | El túnel llega a la laptop, pero **la aplicación local no responde** | Que el puerto esté escuchando (`.\tunnel-status.ps1`, paso 7) |
+
+### 11.4 — Notas de PowerShell 5.1 (por si editas los scripts)
+
+- **`--config` va antes del subcomando**: `cloudflared tunnel --config X ingress validate`,
+  no `... ingress validate --config X`.
+- **Nunca uses `2>&1` sobre un `.exe`**: PowerShell 5.1 envuelve cada línea de
+  stderr en un `NativeCommandError` y, con `$ErrorActionPreference='Stop'`, aborta
+  el script aunque el comando haya funcionado. `cloudflared` escribe sus mensajes
+  informativos en stderr, así que esto se dispara constantemente.
+- **`deleted_at` de un túnel vivo no está vacío**: vale `0001-01-01T00:00:00Z`
+  (el "tiempo cero" de Go). Filtrar con `-not $_.deleted_at` descarta los túneles
+  buenos.

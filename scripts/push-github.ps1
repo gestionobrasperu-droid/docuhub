@@ -32,12 +32,17 @@ Set-Location $root
 function Write-Step($t) { Write-Host "`n=== $t ===" -ForegroundColor Cyan }
 function Write-Ok($t)   { Write-Host "  [ok] $t" -ForegroundColor Green }
 
+# Una terminal abierta ANTES de instalar Git o gh conserva el PATH viejo y no
+# los encuentra. Se recarga desde el registro para no depender de reiniciar.
+$env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+            [System.Environment]::GetEnvironmentVariable('Path', 'User')
+
 # ----------------------------------------------------------- comprobaciones --
 
 Write-Step 'Comprobando herramientas'
 foreach ($cmd in @('git', 'gh')) {
     if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
-        throw "Falta $cmd. Ejecuta primero scripts\setup-windows.ps1"
+        throw "Falta $cmd. Ejecuta primero scripts\setup-windows.ps1 y abre una terminal nueva."
     }
 }
 Write-Ok 'git y gh disponibles'
