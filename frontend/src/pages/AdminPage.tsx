@@ -48,6 +48,8 @@ function DriveTab({ isAdmin, onChange }: { isAdmin: boolean; onChange: () => voi
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [syncing, setSyncing] = useState<string | null>(null)
+  const [syncResult, setSyncResult] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -92,6 +94,11 @@ function DriveTab({ isAdmin, onChange }: { isAdmin: boolean; onChange: () => voi
   return (
     <div>
       {error && <div className="alert error">{error}</div>}
+      {syncResult && (
+        <div className="alert ok" onClick={() => setSyncResult('')}>
+          {syncResult}
+        </div>
+      )}
 
       {!data?.configured && (
         <div className="alert warn">
@@ -120,6 +127,12 @@ function DriveTab({ isAdmin, onChange }: { isAdmin: boolean; onChange: () => voi
             URI de redirección que debe estar autorizada en Google Cloud: {data.redirect_uri}
           </p>
         )}
+
+        <p className="muted">
+          <b>Escanear Drive</b> registra en la plataforma los archivos y carpetas que hayas subido
+          a mano desde drive.google.com dentro de la carpeta <b>DocuHub</b>. A partir de ese momento
+          quedan bajo el mismo control de permisos, cuotas y auditoría que los subidos desde aquí.
+        </p>
 
         {accounts.length === 0 ? (
           <p className="muted">Todavía no hay ninguna cuenta conectada.</p>
@@ -179,6 +192,31 @@ function DriveTab({ isAdmin, onChange }: { isAdmin: boolean; onChange: () => voi
                           }}
                         >
                           Actualizar
+                        </button>
+                        <button
+                          className="small"
+                          disabled={syncing === a.id}
+                          title="Registra en la plataforma los archivos que subiste a mano desde drive.google.com"
+                          onClick={async () => {
+                            setSyncing(a.id)
+                            setSyncResult('')
+                            try {
+                              const r = await api.admin.driveSync(a.id)
+                              setSyncResult(
+                                `Escaneo terminado: ${r.files_imported} archivos nuevos ` +
+                                  `(${humanBytes(r.bytes_imported)}), ${r.folders_created} carpetas nuevas, ` +
+                                  `${r.files_skipped} ya conocidos.` +
+                                  (r.truncated ? ' Se alcanzó el límite; vuelve a escanear para continuar.' : '') +
+                                  (r.warnings.length ? ` Avisos: ${r.warnings.slice(0, 3).join('; ')}` : ''),
+                              )
+                            } catch (err) {
+                              setError(err instanceof ApiError ? err.message : 'El escaneo falló')
+                            } finally {
+                              setSyncing(null)
+                            }
+                          }}
+                        >
+                          {syncing === a.id ? 'Escaneando…' : 'Escanear Drive'}
                         </button>
                         {!a.is_primary && (
                           <button

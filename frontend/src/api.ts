@@ -188,6 +188,15 @@ export const api = {
       request<{ ok: boolean }>(`/api/admin/drive/${id}/primary`, { method: 'POST' }),
     driveRefresh: (id: string) =>
       request<any>(`/api/admin/drive/${id}/refresh`, { method: 'POST' }),
+    driveSync: (id: string) =>
+      request<{
+        folders_created: number
+        files_imported: number
+        files_skipped: number
+        bytes_imported: number
+        truncated: boolean
+        warnings: string[]
+      }>(`/api/admin/drive/${id}/sync`, { method: 'POST' }),
     driveDisconnect: (id: string) =>
       request<{ ok: boolean }>(`/api/admin/drive/${id}`, { method: 'DELETE' }),
   },

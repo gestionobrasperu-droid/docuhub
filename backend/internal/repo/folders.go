@@ -92,6 +92,14 @@ func (r *Repo) FolderChain(ctx context.Context, id uuid.UUID) ([]*models.Folder,
 	return out, rows.Err()
 }
 
+// FolderByDriveID localiza una carpeta por su id en Google Drive.
+func (r *Repo) FolderByDriveID(ctx context.Context, driveFolderID string) (*models.Folder, error) {
+	row := r.db.QueryRow(ctx,
+		`SELECT `+folderCols+` FROM folders
+		 WHERE drive_folder_id = $1 AND deleted_at IS NULL LIMIT 1`, driveFolderID)
+	return scanFolder(row)
+}
+
 // AttachFolderToDrive enlaza una carpeta local con su equivalente en Drive.
 // Se usa al conectar (o reconectar) una cuenta de Google.
 func (r *Repo) AttachFolderToDrive(ctx context.Context, id uuid.UUID, driveFolderID string, accountID uuid.UUID) error {

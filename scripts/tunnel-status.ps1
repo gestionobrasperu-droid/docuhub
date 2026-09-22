@@ -80,8 +80,10 @@ Write-Head "4. Tunel '$TunnelName' en Cloudflare"
 $uuid = $null
 $listJson = & $cf tunnel list --output json 2>$null
 if ($LASTEXITCODE -eq 0 -and $listJson) {
+    # deleted_at de un túnel vivo es el "tiempo cero" de Go, no una cadena vacía.
     $t = ($listJson | Out-String | ConvertFrom-Json) |
-         Where-Object { $_.name -eq $TunnelName -and -not $_.deleted_at }
+         Where-Object { $_.name -eq $TunnelName -and
+                        ([string]::IsNullOrEmpty($_.deleted_at) -or $_.deleted_at -match '^0001-01-01') }
     if ($t) {
         $uuid = $t[0].id
         Write-Ok "Existe. UUID: $uuid"

@@ -91,7 +91,9 @@ Aquí es donde "administrar por completo los usos" se vuelve real.
 - `scripts/backup.ps1`: `pg_dump` diario cifrado, subido al propio Drive en una carpeta de sistema.
 - Arranque automático tras corte de luz (BIOS + Task Scheduler).
 
-Todo el detalle está en `docs/01-INFRAESTRUCTURA.md` y `docs/03-OPERACION.md`.
+Todo el detalle está en [`01-INFRAESTRUCTURA.md`](01-INFRAESTRUCTURA.md) (opciones y decisiones),
+[`03-CLOUDFLARE-DOMINIO.md`](03-CLOUDFLARE-DOMINIO.md) (el dominio de la empresa, paso a paso) y
+[`04-OPERACION.md`](04-OPERACION.md) (el día a día y la recuperación ante desastre).
 
 ---
 

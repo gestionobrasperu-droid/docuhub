@@ -144,16 +144,20 @@ func (s *Server) routes(static http.Handler) http.Handler {
 					dr.Use(requireRole("admin"))
 					dr.Get("/", s.handleDriveStatus)
 					dr.Get("/connect", s.handleDriveConnect)
+					// El callback de Google llega como navegación del
+					// navegador, no por fetch. La cookie de sesión viaja
+					// igual porque es SameSite=Lax y es un GET de nivel
+					// superior, así que exigir sesión de administrador aquí
+					// es seguro y además impide que un tercero complete el
+					// flujo con un código robado.
+					dr.Get("/callback", s.handleDriveCallback)
 					dr.Post("/{id}/primary", s.handleDriveSetPrimary)
+					dr.Post("/{id}/sync", s.handleDriveSync)
 					dr.Post("/{id}/refresh", s.handleDriveRefreshQuota)
 					dr.Delete("/{id}", s.handleDriveDisconnect)
 				})
 			})
 		})
-
-		// El callback de Google llega desde el navegador, sin cookie de API.
-		// Se valida con el `state` firmado que guardamos al iniciar el flujo.
-		api.Get("/admin/drive/callback", s.handleDriveCallback)
 	})
 
 	// Atajo legible para compartir: /s/{token} abre el frontend público.

@@ -1,0 +1,11 @@
+Este archivo existe para que go:embed encuentre la carpeta en un clon recién
+hecho, antes de compilar el frontend.
+
+Para generar el contenido real:
+
+    cd frontend
+    npm install
+    npm run build
+
+Con Docker no hace falta: el Dockerfile compila el frontend y lo copia aquí
+antes de construir el binario de Go.

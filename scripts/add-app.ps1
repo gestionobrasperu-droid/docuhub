@@ -97,7 +97,7 @@ foreach ($line in $lines) {
 if ($Remove) {
     if (-not $found) { Write-Warn "$fqdn no estaba en la configuracion."; exit 0 }
     Set-Content -Path $configPath -Value $out -Encoding utf8
-    & $cf tunnel ingress validate --config $configPath
+    & $cf tunnel --config $configPath ingress validate
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "config.yml quedo invalido. Restaurando respaldo."
         Copy-Item $backup $configPath -Force
@@ -138,7 +138,7 @@ if ($Remove) {
     $out.InsertRange($marker, $block)
     Set-Content -Path $configPath -Value $out -Encoding utf8
 
-    & $cf tunnel ingress validate --config $configPath
+    & $cf tunnel --config $configPath ingress validate
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "config.yml quedo invalido. Restaurando respaldo."
         Copy-Item $backup $configPath -Force
@@ -147,10 +147,11 @@ if ($Remove) {
     Write-Ok "config.yml actualizado: $fqdn -> $svc"
 
     # ── DNS ──────────────────────────────────────────────────────────────────
-    $dns = & $cf tunnel route dns $TunnelName $fqdn 2>&1 | Out-String
-    if ($LASTEXITCODE -eq 0)                    { Write-Ok   "DNS creado: $fqdn" }
-    elseif ($dns -match 'already exists|record') { Write-Ok   "DNS ya existia: $fqdn" }
-    else                                         { Write-Warn "DNS fallo: $($dns.Trim())" }
+    # Sin `2>&1`: en PowerShell 5.1 convierte el stderr de un .exe en
+    # NativeCommandError y aborta el script aunque el comando funcione.
+    & $cf tunnel route dns $TunnelName $fqdn
+    if ($LASTEXITCODE -eq 0) { Write-Ok   "DNS creado: $fqdn" }
+    else                     { Write-Warn "DNS no creado (lo habitual es que ya existiera): $fqdn" }
 }
 
 # ── Aplicar ──────────────────────────────────────────────────────────────────

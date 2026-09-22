@@ -103,6 +103,21 @@ cd deploy && docker compose up -d --build
    con el estado real de su DNS. La discusión general de alternativas está en
    [`docs/01-INFRAESTRUCTURA.md`](docs/01-INFRAESTRUCTURA.md).
 
+> **¿Primera vez?** Ve directo a [`docs/05-PRUEBA-RAPIDA.md`](docs/05-PRUEBA-RAPIDA.md): es el guion
+> de 20 minutos para vincular la cuenta de Google, subir un archivo pesado, dar acceso a un compañero
+> y mandar un enlace a alguien de fuera, todo en local antes de tocar el dominio.
+
+Para dejar la laptop trabajando sola (arranque automático, watchdog cada 5 minutos y respaldo
+diario), ejecuta como administrador:
+
+```powershell
+.\scripts\keep-alive.ps1
+.\scripts\install-tasks.ps1
+```
+
+El día a día —qué mirar, qué hacer cuando algo falla, cómo recuperarse de un desastre— está en
+[`docs/04-OPERACION.md`](docs/04-OPERACION.md).
+
 ---
 
 ## 5. Modelo de seguridad en una línea

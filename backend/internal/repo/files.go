@@ -168,6 +168,30 @@ func (r *Repo) BumpVersion(ctx context.Context, fileID uuid.UUID) (int, error) {
 	return v, norm(err)
 }
 
+// FileByDriveID localiza un archivo por su id en Google Drive. Lo usa la
+// sincronización para no importar dos veces lo mismo.
+func (r *Repo) FileByDriveID(ctx context.Context, driveFileID string) (*models.File, error) {
+	row := r.db.QueryRow(ctx, fileSelect+`
+		WHERE f.drive_file_id = $1 AND f.deleted_at IS NULL LIMIT 1`, driveFileID)
+	return scanFile(row)
+}
+
+// ImportFile registra un archivo que ya existe en Drive (subido a mano desde
+// drive.google.com). Nace en estado "ready" porque sus bytes ya están ahí.
+func (r *Repo) ImportFile(ctx context.Context, folderID uuid.UUID, name, mimeType string, size int64, driveFileID, md5 string, driveAccountID *uuid.UUID, ownerID *uuid.UUID) (*models.File, error) {
+	var id uuid.UUID
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO files (folder_id, name, mime_type, size_bytes, drive_file_id,
+		                   md5_checksum, drive_account_id, owner_id, status, description)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ready', 'Importado desde Google Drive')
+		RETURNING id`,
+		folderID, name, mimeType, size, driveFileID, md5, driveAccountID, ownerID).Scan(&id)
+	if err != nil {
+		return nil, norm(err)
+	}
+	return r.FileByID(ctx, id)
+}
+
 // FileByNameInFolder detecta colisiones para decidir entre crear o versionar.
 func (r *Repo) FileByNameInFolder(ctx context.Context, folderID uuid.UUID, name string) (*models.File, error) {
 	row := r.db.QueryRow(ctx, fileSelect+`

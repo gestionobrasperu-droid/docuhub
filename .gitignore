@@ -23,10 +23,11 @@ frontend/dist/
 docuhub
 backend/docuhub
 
-# El frontend compilado se genera en el build; solo se versiona el marcador
-# que necesita go:embed para que `go build` funcione sin Node instalado.
+# El frontend compilado se genera en el build (Docker lo hace solo). Solo se
+# versiona el marcador que necesita go:embed para que `go build` no falle en
+# un clon recién hecho.
 backend/web/dist/*
-!backend/web/dist/index.html
+!backend/web/dist/.gitkeep
 
 # Sistema y editores
 .DS_Store

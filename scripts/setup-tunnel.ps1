@@ -48,6 +48,13 @@ function Write-Ok   ($t)     { Write-Host "    OK  $t" -ForegroundColor Green }
 function Write-Warn ($t)     { Write-Host "    !   $t" -ForegroundColor Yellow }
 function Write-Fail ($t)     { Write-Host "    X   $t" -ForegroundColor Red }
 
+# Un túnel vivo NO trae deleted_at vacío: trae el "tiempo cero" de Go,
+# "0001-01-01T00:00:00Z". Filtrar por `-not $_.deleted_at` descarta los túneles
+# buenos, así que hay que comprobarlo explícitamente.
+function Test-TunnelAlive ($t) {
+    return ([string]::IsNullOrEmpty($t.deleted_at) -or $t.deleted_at -match '^0001-01-01')
+}
+
 Write-Host ""
 Write-Host "===========================================================" -ForegroundColor White
 Write-Host "  Tunel de Cloudflare -> $Domain" -ForegroundColor White
@@ -109,7 +116,7 @@ $uuid = $null
 $listJson = & $cf tunnel list --output json 2>$null
 if ($LASTEXITCODE -eq 0 -and $listJson) {
     $existing = ($listJson | Out-String | ConvertFrom-Json) |
-                Where-Object { $_.name -eq $TunnelName -and -not $_.deleted_at }
+                Where-Object { $_.name -eq $TunnelName -and (Test-TunnelAlive $_) }
     if ($existing) { $uuid = $existing[0].id }
 }
 
@@ -119,7 +126,7 @@ if ($uuid) {
     & $cf tunnel create $TunnelName
     $listJson = & $cf tunnel list --output json
     $existing = ($listJson | Out-String | ConvertFrom-Json) |
-                Where-Object { $_.name -eq $TunnelName -and -not $_.deleted_at }
+                Where-Object { $_.name -eq $TunnelName -and (Test-TunnelAlive $_) }
     if (-not $existing) { Write-Fail "No pude crear el tunel."; exit 1 }
     $uuid = $existing[0].id
     Write-Ok "Creado. UUID: $uuid"
@@ -187,23 +194,25 @@ Set-Content -Path $configPath -Value $config -Encoding utf8
 Write-Ok "$configPath"
 
 # Valida la sintaxis antes de seguir.
-& $cf tunnel ingress validate --config $configPath
+# OJO: --config va ANTES del subcomando `ingress`, no después.
+& $cf tunnel --config $configPath ingress validate
 if ($LASTEXITCODE -ne 0) { Write-Fail "config.yml invalido. Revisa el archivo."; exit 1 }
 Write-Ok "Sintaxis validada."
 
 # ── 5. Registros DNS ─────────────────────────────────────────────────────────
 Write-Step 5 "Registros DNS en Cloudflare"
 
+# OJO: nada de `2>&1` sobre un ejecutable nativo. En PowerShell 5.1 eso envuelve
+# cada línea de stderr en un ErrorRecord (NativeCommandError) y, con
+# $ErrorActionPreference='Stop', aborta el script aunque el comando haya ido bien
+# — y cloudflared escribe sus mensajes informativos en stderr.
 foreach ($sub in ($Hostnames.Keys | Sort-Object)) {
     $fqdn = "$sub.$Domain"
-    $out = & $cf tunnel route dns $TunnelName $fqdn 2>&1 | Out-String
+    & $cf tunnel route dns $TunnelName $fqdn
     if ($LASTEXITCODE -eq 0) {
         Write-Ok "$fqdn -> $uuid.cfargotunnel.com"
-    } elseif ($out -match 'already exists|record with that host') {
-        Write-Ok "$fqdn ya existia."
     } else {
-        Write-Warn "$fqdn no se pudo crear:"
-        Write-Host ("        " + ($out.Trim() -replace "`r?`n", "`n        "))
+        Write-Warn "$fqdn no se creo (lo habitual es que el registro ya existiera)."
     }
 }
 
