@@ -1,15 +1,24 @@
 import { DragEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import {
-  api, ApiError, FileItem, Folder, FolderPayload, humanBytes, SessionInfo, uploadFile, UploadProgress,
+  api, ApiError, FileItem, Folder, FolderPayload, formatDate, humanBytes, plural, SessionInfo,
+  uploadFile, UploadProgress,
 } from '../api'
 import Modal from '../components/Modal'
 import ShareDialog from '../components/ShareDialog'
 import PermissionsDialog from '../components/PermissionsDialog'
+import { iconFor } from '../components/fileIcon'
 
 interface Props {
   folderId: string | null
   session: SessionInfo
   navigate: (to: string) => void
+}
+
+const NIVELES: Record<string, string> = {
+  viewer: 'Solo lectura',
+  downloader: 'Puedes descargar',
+  editor: 'Puedes subir y editar',
+  manager: 'Eres responsable',
 }
 
 export default function ExplorerPage({ folderId, session, navigate }: Props) {
@@ -42,19 +51,14 @@ export default function ExplorerPage({ folderId, session, navigate }: Props) {
     void load()
   }, [load])
 
-  // ------------------------------------------------------------- subidas --
+  /* ---------------------------------------------------------- subidas -- */
 
   const startUploads = useCallback(
     async (files: FileList | File[]) => {
       if (!data) return
-      const list = Array.from(files)
-
-      for (const file of list) {
+      for (const file of Array.from(files)) {
         const update = (p: UploadProgress) =>
-          setUploads((prev) => {
-            const next = prev.filter((u) => u.fileName !== p.fileName)
-            return [...next, p]
-          })
+          setUploads((prev) => [...prev.filter((u) => u.fileName !== p.fileName), p])
 
         try {
           await uploadFile(file, data.folder.id, update)
@@ -70,7 +74,7 @@ export default function ExplorerPage({ folderId, session, navigate }: Props) {
         }
       }
       await load()
-      // Las subidas terminadas se limpian tras unos segundos.
+      // Las terminadas se retiran solas; los errores se quedan para leerlos.
       setTimeout(() => setUploads((prev) => prev.filter((u) => u.status === 'error')), 6000)
     },
     [data, load],
@@ -82,7 +86,7 @@ export default function ExplorerPage({ folderId, session, navigate }: Props) {
     if (e.dataTransfer.files.length) void startUploads(e.dataTransfer.files)
   }
 
-  // ------------------------------------------------------------ acciones --
+  /* --------------------------------------------------------- acciones -- */
 
   async function createFolder(name: string, restricted: boolean) {
     if (!data) return
@@ -96,7 +100,7 @@ export default function ExplorerPage({ folderId, session, navigate }: Props) {
   }
 
   async function removeFile(file: FileItem) {
-    if (!confirm(`¿Eliminar "${file.name}"? Va a la papelera de Google Drive, donde se puede recuperar durante 30 días.`))
+    if (!confirm(`¿Eliminar "${file.name}"?\n\nVa a la papelera de Google Drive, donde se puede recuperar durante 30 días.`))
       return
     try {
       await api.deleteFile(file.id)
@@ -135,19 +139,21 @@ export default function ExplorerPage({ folderId, session, navigate }: Props) {
       return
     }
     try {
-      const res = await api.search(search.trim())
-      setResults(res.files)
+      setResults((await api.search(search.trim())).files)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'La búsqueda falló')
     }
   }
 
-  // --------------------------------------------------------------- vista --
+  /* ------------------------------------------------------------ vista -- */
 
   if (loading && !data) return <div className="muted">Cargando…</div>
 
+  const subiendo = uploads.filter((u) => u.status === 'subiendo' || u.status === 'preparando')
+
   return (
     <div
+      className={dragging ? 'drag-overlay' : ''}
       onDragOver={(e) => {
         e.preventDefault()
         if (data?.can_upload) setDragging(true)
@@ -155,14 +161,11 @@ export default function ExplorerPage({ folderId, session, navigate }: Props) {
       onDragLeave={() => setDragging(false)}
       onDrop={onDrop}
     >
-      {error && (
-        <div className="alert error" onClick={() => setError('')}>
-          {error}
-        </div>
-      )}
-
-      <div className="row between" style={{ marginBottom: '.8rem' }}>
-        <form className="row" onSubmit={runSearch} style={{ flex: 1, maxWidth: 420 }}>
+      <div className="page-head row between">
+        <form className="search" onSubmit={runSearch} style={{ flex: '0 1 420px' }}>
+          <span className="icon" aria-hidden>
+            🔍
+          </span>
           <input
             placeholder="Buscar en toda la plataforma…"
             value={search}
@@ -171,14 +174,13 @@ export default function ExplorerPage({ folderId, session, navigate }: Props) {
               if (!e.target.value) setResults(null)
             }}
           />
-          <button type="submit">Buscar</button>
         </form>
 
         {data?.can_upload && (
           <div className="row">
-            <button onClick={() => setNewFolder(true)}>Nueva carpeta</button>
+            <button onClick={() => setNewFolder(true)}>📁 Nueva carpeta</button>
             <button className="primary" onClick={() => fileInput.current?.click()}>
-              Subir archivos
+              ⬆ Subir archivos
             </button>
             <input
               ref={fileInput}
@@ -194,79 +196,120 @@ export default function ExplorerPage({ folderId, session, navigate }: Props) {
         )}
       </div>
 
+      {error && (
+        <div className="alert error" onClick={() => setError('')}>
+          <span className="ico">⚠️</span>
+          <span>{error}</span>
+        </div>
+      )}
+
       {uploads.length > 0 && (
         <div className="card">
-          <h3>Subidas</h3>
-          {uploads.map((u) => (
-            <div key={u.fileName} style={{ marginBottom: '.6rem' }}>
-              <div className="row between">
-                <span className="mono">{u.fileName}</span>
-                <span className="muted">
-                  {u.status === 'error' ? u.message : `${u.percent}% · ${humanBytes(u.sent)} / ${humanBytes(u.total)}`}
-                </span>
+          <div className="card-head">
+            <h2>Subidas {subiendo.length > 0 && <span className="dim">({subiendo.length} en curso)</span>}</h2>
+          </div>
+          <div className="card-body stack">
+            {uploads.map((u) => (
+              <div key={u.fileName}>
+                <div className="row between" style={{ marginBottom: '.25rem' }}>
+                  <span className="truncate" style={{ fontSize: '.85rem', maxWidth: '60%' }}>
+                    {u.fileName}
+                  </span>
+                  <span className="dim">
+                    {u.status === 'error'
+                      ? u.message
+                      : u.status === 'listo'
+                        ? '✓ Completado'
+                        : `${u.percent}% · ${humanBytes(u.sent)} de ${humanBytes(u.total)}`}
+                  </span>
+                </div>
+                <div className="progress">
+                  <div
+                    className={u.status === 'error' ? 'err' : u.status === 'listo' ? 'ok' : ''}
+                    style={{ width: `${u.status === 'error' ? 100 : u.percent}%` }}
+                  />
+                </div>
               </div>
-              <div className="progress">
-                <div
-                  style={{
-                    width: `${u.percent}%`,
-                    background: u.status === 'error' ? 'var(--danger)' : undefined,
-                  }}
-                />
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
       {results ? (
         <div className="card">
-          <div className="row between">
+          <div className="card-head">
             <h2>Resultados de «{search}»</h2>
-            <button className="ghost" onClick={() => setResults(null)}>
+            <div className="spacer" />
+            <span className="dim">{results.length} archivos</span>
+            <button className="ghost sm" onClick={() => setResults(null)}>
               Volver a la carpeta
             </button>
           </div>
-          {results.length === 0 && <p className="muted">Sin coincidencias.</p>}
-          <div className="item-list">
-            {results.map((f) => (
+          {results.length === 0 ? (
+            <div className="empty">Sin coincidencias.</div>
+          ) : (
+            results.map((f) => (
               <FileRow
                 key={f.id}
                 file={f}
-                canManage={false}
+                canEdit={false}
+                onOpenFolder={() => navigate(`/f/${f.folder_id}`)}
                 onShare={() => setShareTarget({ file: f })}
                 onPermissions={() => setPermTarget({ type: 'file', id: f.id, name: f.name })}
                 onRename={() => rename('file', f.id, f.name)}
                 onDelete={() => removeFile(f)}
               />
-            ))}
-          </div>
+            ))
+          )}
         </div>
       ) : (
         data && (
           <>
-            <nav className="breadcrumb">
-              {data.breadcrumb.map((f) => (
-                <span key={f.id}>
-                  <button onClick={() => navigate(f.is_root ? '/' : `/f/${f.id}`)}>{f.name}</button>
-                  <span>/</span>
-                </span>
-              ))}
-              <b>{data.folder.name}</b>
-              {data.folder.restricted && <span className="badge warn">restringida</span>}
-              <span className="muted">
-                · {data.file_count} archivos · {humanBytes(data.total_bytes)}
-              </span>
-            </nav>
+            <div className="row between" style={{ marginBottom: '.8rem' }}>
+              <nav className="breadcrumb">
+                {data.breadcrumb.map((f) => (
+                  <span key={f.id}>
+                    <button onClick={() => navigate(f.is_root ? '/archivos' : `/f/${f.id}`)}>{f.name}</button>
+                    <span className="sep">/</span>
+                  </span>
+                ))}
+                <b>{data.folder.name}</b>
+                {data.folder.restricted && (
+                  <span className="badge warn" title="Solo entra quien tenga permiso explícito">
+                    🔒 restringida
+                  </span>
+                )}
+              </nav>
 
-            <div className={`card ${dragging ? 'dropzone active' : ''}`}>
+              <div className="row">
+                <span className="dim">
+                  {plural(data.file_count, "archivo", "archivos")} · {humanBytes(data.total_bytes)}
+                </span>
+                <span className="badge" title="Tu nivel de acceso en esta carpeta">
+                  {NIVELES[data.level] ?? data.level}
+                </span>
+              </div>
+            </div>
+
+            <div className="card">
               {data.folders.length === 0 && data.files.length === 0 ? (
-                <div className="dropzone">
-                  {data.can_upload
-                    ? 'Arrastra archivos aquí o usa «Subir archivos»'
-                    : 'Esta carpeta está vacía'}
+                <div className="card-body">
+                  <div className={`dropzone${dragging ? ' active' : ''}`}>
+                    {data.can_upload ? (
+                      <>
+                        <div style={{ fontSize: '1.6rem', marginBottom: '.4rem' }}>⬆</div>
+                        Arrastra archivos aquí, o usa <b>Subir archivos</b>
+                        <div className="dim" style={{ marginTop: '.4rem' }}>
+                          Se trocean solos: un archivo de 20 GB se sube igual que uno de 20 MB
+                        </div>
+                      </>
+                    ) : (
+                      'Esta carpeta está vacía'
+                    )}
+                  </div>
                 </div>
               ) : (
-                <div className="item-list">
+                <>
                   {data.folders.map((f) => (
                     <div className="item" key={f.id}>
                       <span className="icon" aria-hidden>
@@ -274,25 +317,34 @@ export default function ExplorerPage({ folderId, session, navigate }: Props) {
                       </span>
                       <div className="name">
                         <b>
-                          <a href={`#/f/${f.id}`}>{f.name}</a>
+                          <a
+                            href={`#/f/${f.id}`}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              navigate(`/f/${f.id}`)
+                            }}
+                          >
+                            {f.name}
+                          </a>
                         </b>
+                        <span>Carpeta{f.restricted ? ' restringida' : ''} · {formatDate(f.created_at)}</span>
                       </div>
                       <div className="actions">
-                        <button className="small ghost" onClick={() => setShareTarget({ folder: f })}>
+                        <button className="ghost sm" onClick={() => setShareTarget({ folder: f })}>
                           Compartir
                         </button>
                         {data.can_manage && (
                           <>
                             <button
-                              className="small ghost"
+                              className="ghost sm"
                               onClick={() => setPermTarget({ type: 'folder', id: f.id, name: f.name })}
                             >
                               Permisos
                             </button>
-                            <button className="small ghost" onClick={() => rename('folder', f.id, f.name)}>
+                            <button className="ghost sm" onClick={() => rename('folder', f.id, f.name)}>
                               Renombrar
                             </button>
-                            <button className="small danger" onClick={() => removeFolder(f)}>
+                            <button className="danger sm" onClick={() => removeFolder(f)}>
                               Eliminar
                             </button>
                           </>
@@ -305,14 +357,15 @@ export default function ExplorerPage({ folderId, session, navigate }: Props) {
                     <FileRow
                       key={f.id}
                       file={f}
-                      canManage={data.can_manage || data.can_upload}
+                      canEdit={data.can_upload}
+                      canManage={data.can_manage}
                       onShare={() => setShareTarget({ file: f })}
                       onPermissions={() => setPermTarget({ type: 'file', id: f.id, name: f.name })}
                       onRename={() => rename('file', f.id, f.name)}
                       onDelete={() => removeFile(f)}
                     />
                   ))}
-                </div>
+                </>
               )}
             </div>
           </>
@@ -322,11 +375,7 @@ export default function ExplorerPage({ folderId, session, navigate }: Props) {
       {newFolder && <NewFolderModal onClose={() => setNewFolder(false)} onCreate={createFolder} />}
 
       {shareTarget && (
-        <ShareDialog
-          file={shareTarget.file}
-          folder={shareTarget.folder}
-          onClose={() => setShareTarget(null)}
-        />
+        <ShareDialog file={shareTarget.file} folder={shareTarget.folder} onClose={() => setShareTarget(null)} />
       )}
 
       {permTarget && (
@@ -342,14 +391,16 @@ export default function ExplorerPage({ folderId, session, navigate }: Props) {
 }
 
 function FileRow({
-  file, canManage, onShare, onPermissions, onRename, onDelete,
+  file, canEdit, canManage, onShare, onPermissions, onRename, onDelete, onOpenFolder,
 }: {
   file: FileItem
-  canManage: boolean
+  canEdit: boolean
+  canManage?: boolean
   onShare: () => void
   onPermissions: () => void
   onRename: () => void
   onDelete: () => void
+  onOpenFolder?: () => void
 }) {
   return (
     <div className="item">
@@ -357,30 +408,38 @@ function FileRow({
         {iconFor(file.mime_type)}
       </span>
       <div className="name">
-        <b>{file.name}</b>
-        <span className="muted">
+        <b title={file.name}>{file.name}</b>
+        <span>
           {humanBytes(file.size_bytes)}
-          {file.version > 1 && ` · v${file.version}`}
-          {file.download_count > 0 && ` · ${file.download_count} descargas`}
-          {file.owner_email && ` · ${file.owner_email}`}
+          {file.version > 1 && ` · versión ${file.version}`}
+          {file.download_count > 0 && ` · ${plural(file.download_count, "descarga", "descargas")}`}
+          {file.owner_email && ` · ${file.owner_email.split('@')[0]}`}
+          {` · ${formatDate(file.updated_at)}`}
         </span>
       </div>
       <div className="actions">
-        <a className="btn small" href={api.downloadUrl(file.id)}>
-          Descargar
+        {onOpenFolder && (
+          <button className="ghost sm" onClick={onOpenFolder}>
+            Ir a la carpeta
+          </button>
+        )}
+        <a className="btn sm" href={api.downloadUrl(file.id)}>
+          ⬇ Descargar
         </a>
-        <button className="small ghost" onClick={onShare}>
+        <button className="ghost sm" onClick={onShare}>
           Compartir
         </button>
-        {canManage && (
+        {canEdit && (
           <>
-            <button className="small ghost" onClick={onPermissions}>
-              Permisos
-            </button>
-            <button className="small ghost" onClick={onRename}>
+            {canManage && (
+              <button className="ghost sm" onClick={onPermissions}>
+                Permisos
+              </button>
+            )}
+            <button className="ghost sm" onClick={onRename}>
               Renombrar
             </button>
-            <button className="small danger" onClick={onDelete}>
+            <button className="danger sm" onClick={onDelete}>
               Eliminar
             </button>
           </>
@@ -388,18 +447,6 @@ function FileRow({
       </div>
     </div>
   )
-}
-
-function iconFor(mime: string): string {
-  if (mime.startsWith('image/')) return '🖼️'
-  if (mime.startsWith('video/')) return '🎞️'
-  if (mime.startsWith('audio/')) return '🎵'
-  if (mime.includes('pdf')) return '📕'
-  if (mime.includes('zip') || mime.includes('rar') || mime.includes('7z')) return '🗜️'
-  if (mime.includes('sheet') || mime.includes('excel') || mime.includes('csv')) return '📊'
-  if (mime.includes('word') || mime.includes('document')) return '📝'
-  if (mime.includes('dwg') || mime.includes('dxf')) return '📐'
-  return '📄'
 }
 
 function NewFolderModal({
@@ -419,24 +466,31 @@ function NewFolderModal({
         <>
           <button onClick={onClose}>Cancelar</button>
           <button className="primary" disabled={!name.trim()} onClick={() => onCreate(name.trim(), restricted)}>
-            Crear
+            Crear carpeta
           </button>
         </>
       }
     >
       <div className="field">
         <label htmlFor="fname">Nombre</label>
-        <input id="fname" value={name} autoFocus onChange={(e) => setName(e.target.value)} />
-      </div>
-      <label className="row" style={{ gap: '.5rem' }}>
         <input
-          type="checkbox"
-          style={{ width: 'auto' }}
-          checked={restricted}
-          onChange={(e) => setRestricted(e.target.checked)}
+          id="fname"
+          value={name}
+          autoFocus
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && name.trim() && onCreate(name.trim(), restricted)}
+          placeholder="Ej.: Expediente técnico 2026"
         />
+      </div>
+
+      <label className="check">
+        <input type="checkbox" checked={restricted} onChange={(e) => setRestricted(e.target.checked)} />
         <span>
-          Carpeta restringida — solo la verá quien reciba permiso explícito
+          <b>Carpeta restringida</b>
+          <div className="help">
+            Solo la verá quien reciba permiso explícito. Para el resto de la empresa será como si no
+            existiera, aunque tengan rol de miembro.
+          </div>
         </span>
       </label>
     </Modal>

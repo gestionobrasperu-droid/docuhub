@@ -197,3 +197,32 @@ func validatePassword(pw string) error {
 	}
 	return nil
 }
+
+// handleMyOverview alimenta la pantalla de inicio del usuario: lo suyo, no lo
+// de toda la plataforma. Un miembro entra para ver en que estaba trabajando y
+// cuanto espacio le queda, no para mirar estadisticas globales.
+func (s *Server) handleMyOverview(w http.ResponseWriter, r *http.Request) {
+	user := userFrom(r.Context())
+
+	summary, err := s.repo.SummaryForOwner(r.Context(), user.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "No se pudo calcular tu resumen")
+		return
+	}
+	recent, err := s.repo.RecentFilesByOwner(r.Context(), user.ID, 8)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "No se pudieron listar tus archivos recientes")
+		return
+	}
+	usage, err := s.quota.Snapshot(r.Context(), user)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "No se pudo calcular tu consumo")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"summary":       summary,
+		"recent_files":  recent,
+		"usage":         usage,
+	})
+}

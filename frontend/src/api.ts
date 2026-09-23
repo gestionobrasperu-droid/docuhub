@@ -118,6 +118,13 @@ export const api = {
     }),
 
   // ---------------------------------------------------------- carpetas --
+  myOverview: () =>
+    request<{
+      summary: { file_count: number; stored_bytes: number; download_count: number; active_shares: number }
+      recent_files: FileItem[]
+      usage: { storage_limit: number; storage_used: number; bandwidth_limit: number; bandwidth_used: number }
+    }>('/api/me/overview'),
+
   root: () => request<FolderPayload>('/api/folders/root'),
   folder: (id: string) => request<FolderPayload>(`/api/folders/${id}`),
   createFolder: (parent_id: string | null, name: string, restricted = false) =>
@@ -338,4 +345,10 @@ export function formatDate(iso?: string): string {
   if (!iso) return '—'
   const d = new Date(iso)
   return d.toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+// Concordancia de número. Un "1 subidas hoy" en un panel de dirección resta
+// más credibilidad de lo que parece.
+export function plural(n: number, singular: string, plural: string): string {
+  return `${n} ${n === 1 ? singular : plural}`
 }

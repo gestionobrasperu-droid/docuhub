@@ -200,3 +200,59 @@ func (r *Repo) FileByNameInFolder(ctx context.Context, folderID uuid.UUID, name 
 		LIMIT 1`, folderID, name)
 	return scanFile(row)
 }
+
+// RecentFilesByOwner devuelve los ultimos archivos que subio un usuario.
+// Alimenta su pantalla de inicio: lo primero que quiere ver alguien al entrar
+// es en que estaba trabajando.
+func (r *Repo) RecentFilesByOwner(ctx context.Context, ownerID uuid.UUID, limit int) ([]*models.File, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 8
+	}
+	rows, err := r.db.Query(ctx, fileSelect+`
+		WHERE f.owner_id = $1 AND f.deleted_at IS NULL AND f.status = 'ready'
+		ORDER BY f.updated_at DESC
+		LIMIT $2`, ownerID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []*models.File{}
+	for rows.Next() {
+		f, err := scanFile(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+// OwnerSummary resume la actividad de un usuario para su pantalla de inicio.
+type OwnerSummary struct {
+	FileCount     int   `json:"file_count"`
+	StoredBytes   int64 `json:"stored_bytes"`
+	DownloadCount int64 `json:"download_count"`
+	ActiveShares  int   `json:"active_shares"`
+}
+
+func (r *Repo) SummaryForOwner(ctx context.Context, ownerID uuid.UUID) (*OwnerSummary, error) {
+	var s OwnerSummary
+	err := r.db.QueryRow(ctx, `
+		SELECT
+			(SELECT count(*) FROM files
+			  WHERE owner_id = $1 AND deleted_at IS NULL AND status = 'ready'),
+			(SELECT COALESCE(sum(size_bytes), 0) FROM files
+			  WHERE owner_id = $1 AND deleted_at IS NULL AND status = 'ready'),
+			(SELECT COALESCE(sum(download_count), 0) FROM files
+			  WHERE owner_id = $1 AND deleted_at IS NULL),
+			(SELECT count(*) FROM share_links
+			  WHERE created_by = $1 AND revoked_at IS NULL
+			    AND (expires_at IS NULL OR expires_at > now())
+			    AND (max_downloads = 0 OR download_count < max_downloads))`,
+		ownerID).Scan(&s.FileCount, &s.StoredBytes, &s.DownloadCount, &s.ActiveShares)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}

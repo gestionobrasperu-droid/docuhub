@@ -1,287 +1,236 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, ApiError, formatDate, humanBytes, SessionInfo, User } from '../api'
+import { api, ApiError, formatDate, humanBytes, plural, SessionInfo, User } from '../api'
 import Modal from '../components/Modal'
 
-type Tab = 'drive' | 'usuarios' | 'uso' | 'bitacora' | 'cuenta'
+export type AdminSection = 'panel' | 'usuarios' | 'drive' | 'bitacora'
 
+// El área de administración está separada del espacio del usuario: distinta
+// entrada en el menú, distinto encabezado y distintas pantallas. Aquí nadie
+// gestiona "sus" archivos; se gobierna la plataforma entera.
 export default function AdminPage({
-  session, onSessionChange,
+  section, session, onSessionChange, navigate,
 }: {
+  section: AdminSection
   session: SessionInfo
   onSessionChange: () => void
+  navigate: (to: string) => void
 }) {
-  const [tab, setTab] = useState<Tab>('drive')
-
-  return (
-    <div>
-      <h1>Administración</h1>
-      <div className="tabs">
-        <button className={tab === 'drive' ? 'active' : ''} onClick={() => setTab('drive')}>
-          Google Drive
-        </button>
-        <button className={tab === 'usuarios' ? 'active' : ''} onClick={() => setTab('usuarios')}>
-          Usuarios
-        </button>
-        <button className={tab === 'uso' ? 'active' : ''} onClick={() => setTab('uso')}>
-          Uso y estadísticas
-        </button>
-        <button className={tab === 'bitacora' ? 'active' : ''} onClick={() => setTab('bitacora')}>
-          Bitácora
-        </button>
-        <button className={tab === 'cuenta' ? 'active' : ''} onClick={() => setTab('cuenta')}>
-          Mi cuenta
-        </button>
-      </div>
-
-      {tab === 'drive' && <DriveTab isAdmin={session.user.role === 'admin'} onChange={onSessionChange} />}
-      {tab === 'usuarios' && <UsersTab me={session.user} />}
-      {tab === 'uso' && <UsageTab />}
-      {tab === 'bitacora' && <AuditTab />}
-      {tab === 'cuenta' && <AccountTab />}
-    </div>
-  )
+  if (section === 'usuarios') return <UsersSection me={session.user} />
+  if (section === 'drive') return <DriveSection isAdmin={session.user.role === 'admin'} onChange={onSessionChange} />
+  if (section === 'bitacora') return <AuditSection />
+  return <OverviewSection navigate={navigate} />
 }
 
-// ------------------------------------------------------------ Google Drive --
+/* ─────────────────────────────────────────────── panel de control ──── */
 
-function DriveTab({ isAdmin, onChange }: { isAdmin: boolean; onChange: () => void }) {
+function OverviewSection({ navigate }: { navigate: (to: string) => void }) {
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [syncing, setSyncing] = useState<string | null>(null)
-  const [syncResult, setSyncResult] = useState('')
-
-  const load = useCallback(async () => {
-    try {
-      setData(await api.admin.drive())
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'No se pudo consultar el estado')
-    }
-  }, [])
 
   useEffect(() => {
-    void load()
-    // Al volver del consentimiento de Google, la URL trae el resultado.
-    const hash = window.location.hash
-    if (hash.includes('drive=conectado')) {
-      onChange()
-      window.location.hash = '/admin'
-    } else if (hash.includes('drive_error=')) {
-      setError('Google devolvió un error: ' + decodeURIComponent(hash.split('drive_error=')[1]))
-      window.location.hash = '/admin'
-    }
-  }, [load, onChange])
+    api
+      .admin.stats()
+      .then(setData)
+      .catch((err) => setError(err instanceof ApiError ? err.message : 'No se pudieron cargar las estadísticas'))
+  }, [])
 
-  async function connect() {
-    setBusy(true)
-    setError('')
-    try {
-      const res = await api.admin.driveConnect()
-      // Google exige una navegación real del navegador, no una petición fetch.
-      window.location.href = res.auth_url
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'No se pudo iniciar la conexión')
-      setBusy(false)
-    }
+  if (error) {
+    return (
+      <div className="alert error">
+        <span className="ico">⚠️</span>
+        <span>{error}</span>
+      </div>
+    )
   }
+  if (!data) return <div className="muted">Calculando…</div>
 
-  if (!isAdmin) {
-    return <div className="card">Solo un administrador puede gestionar las cuentas de Google Drive.</div>
-  }
-
-  const accounts: any[] = data?.accounts ?? []
+  const t = data.totals
+  const traffic: any[] = data.traffic ?? []
+  const maxDia = Math.max(1, ...traffic.map((d: any) => d.uploads + d.downloads))
+  const cuentas: any[] = data.drive_accounts ?? []
+  const principal = cuentas.find((a) => a.is_primary) ?? cuentas[0]
+  const pctDrive = principal?.quota_total_bytes
+    ? Math.round((principal.quota_used_bytes / principal.quota_total_bytes) * 100)
+    : 0
 
   return (
     <div>
-      {error && <div className="alert error">{error}</div>}
-      {syncResult && (
-        <div className="alert ok" onClick={() => setSyncResult('')}>
-          {syncResult}
-        </div>
-      )}
+      <div className="page-head">
+        <h1>Panel de control</h1>
+        <div className="lead">Estado de la plataforma y consumo de los últimos 30 días.</div>
+      </div>
 
-      {!data?.configured && (
-        <div className="alert warn">
-          Faltan <span className="mono">GOOGLE_CLIENT_ID</span> y{' '}
-          <span className="mono">GOOGLE_CLIENT_SECRET</span> en el archivo <span className="mono">deploy/.env</span>.
-          Revisa <span className="mono">docs/02-GOOGLE-DRIVE-SETUP.md</span>.
-        </div>
-      )}
+      <div className="grid">
+        <Metric label="Archivos" value={String(t.files)} hint={`${humanBytes(t.stored_bytes)} en total`} />
+        <Metric label="Usuarios activos" value={String(t.active_users)} hint={plural(t.users, "cuenta en total", "cuentas en total")} />
+        <Metric label="Descargas" value={String(t.downloads)} hint={`${humanBytes(t.download_bytes_30d)} en 30 días`} />
+        <Metric label="Enlaces vigentes" value={String(t.active_shares)} hint={plural(t.uploads_today, "subida hoy", "subidas hoy")} />
+      </div>
 
-      <div className="card">
-        <div className="row between">
-          <div>
-            <h2>Cuentas enlazadas</h2>
-            <p className="muted" style={{ margin: 0 }}>
-              Los archivos se guardan en el Drive de estas cuentas. La plataforma controla quién
-              accede a ellos.
+      <div className="grid-2" style={{ marginTop: '1rem' }}>
+        <div className="card">
+          <div className="card-head">
+            <h2>Tráfico diario</h2>
+            <div className="spacer" />
+            <span className="dim">últimos {traffic.length} días</span>
+          </div>
+          <div className="card-body">
+            <div className="chart">
+              {traffic.map((d: any) => (
+                <div
+                  key={d.day}
+                  className="bar"
+                  style={{ height: `${((d.uploads + d.downloads) / maxDia) * 100}%` }}
+                  title={`${d.day}\n↑ ${humanBytes(d.uploads)} subidos\n↓ ${humanBytes(d.downloads)} descargados`}
+                />
+              ))}
+            </div>
+            <div className="chart-axis">
+              <span>{traffic[0]?.day ?? ''}</span>
+              <span>{traffic[traffic.length - 1]?.day ?? ''}</span>
+            </div>
+            <p className="dim" style={{ marginTop: '.6rem', marginBottom: 0 }}>
+              Pasa el cursor por una barra para ver el detalle del día.
             </p>
           </div>
-          <button className="primary" onClick={connect} disabled={busy || !data?.configured}>
-            {busy ? 'Abriendo Google…' : 'Conectar cuenta'}
-          </button>
         </div>
 
-        {data?.redirect_uri && (
-          <p className="muted mono" style={{ marginTop: '.7rem' }}>
-            URI de redirección que debe estar autorizada en Google Cloud: {data.redirect_uri}
-          </p>
-        )}
+        <div className="card">
+          <div className="card-head">
+            <h2>Almacenamiento en Google Drive</h2>
+          </div>
+          <div className="card-body">
+            {!principal ? (
+              <div className="empty">
+                No hay ninguna cuenta conectada.
+                <div style={{ marginTop: '.8rem' }}>
+                  <button className="primary" onClick={() => navigate('/admin/drive')}>
+                    Conectar cuenta
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="row between" style={{ marginBottom: '.4rem' }}>
+                  <b style={{ fontSize: '.9rem' }}>{principal.email}</b>
+                  <span className={`badge ${principal.status === 'active' ? 'ok' : 'danger'}`}>
+                    {principal.status === 'active' ? 'activa' : principal.status}
+                  </span>
+                </div>
+                <div className="progress">
+                  <div
+                    className={pctDrive >= 90 ? 'err' : ''}
+                    style={{
+                      width: `${Math.max(pctDrive, 1)}%`,
+                      background: pctDrive >= 75 && pctDrive < 90 ? 'var(--warn)' : undefined,
+                    }}
+                  />
+                </div>
+                <div className="dim" style={{ marginTop: '.35rem' }}>
+                  {humanBytes(principal.quota_used_bytes)} de {humanBytes(principal.quota_total_bytes)} ({pctDrive}%)
+                </div>
+                <div className="dim" style={{ marginTop: '.2rem' }}>
+                  Comprobado {formatDate(principal.quota_checked_at)}
+                </div>
+                <button className="subtle block" style={{ marginTop: '1rem' }} onClick={() => navigate('/admin/drive')}>
+                  Gestionar cuentas de Drive
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
 
-        {data?.scope_limited ? (
-          <p className="muted">
-            <b>Modo de acceso limitado</b> (permiso <span className="mono">drive.file</span>): la
-            plataforma solo ve los archivos que ella misma crea. Es el permiso que Google considera
-            no sensible, asi que no exige pasar por su proceso de verificacion. A cambio, lo que
-            subas a mano desde drive.google.com queda fuera de su alcance y <b>Escanear Drive</b> no
-            lo encontrara: sube esos archivos desde aqui.
-          </p>
-        ) : (
-          <p className="muted">
-            <b>Escanear Drive</b> registra en la plataforma los archivos y carpetas que hayas subido
-            a mano desde drive.google.com dentro de la carpeta <b>DocuHub</b>. A partir de ese
-            momento quedan bajo el mismo control de permisos, cuotas y auditoria que los subidos
-            desde aqui.
-          </p>
-        )}
-
-        {accounts.length === 0 ? (
-          <p className="muted">Todavía no hay ninguna cuenta conectada.</p>
-        ) : (
-          <div className="table-wrap" style={{ marginTop: '1rem' }}>
+      <div className="grid-2" style={{ marginTop: '1rem' }}>
+        <div className="card">
+          <div className="card-head">
+            <h2>Consumo por usuario</h2>
+          </div>
+          <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Cuenta</th>
-                  <th>Estado</th>
-                  <th>Espacio</th>
-                  <th>Comprobado</th>
-                  <th />
+                  <th>Usuario</th>
+                  <th>Archivos</th>
+                  <th>Almacenado</th>
+                  <th>Descargado (mes)</th>
                 </tr>
               </thead>
               <tbody>
-                {accounts.map((a) => {
-                  const pct = a.quota_total_bytes
-                    ? Math.round((a.quota_used_bytes / a.quota_total_bytes) * 100)
-                    : 0
-                  return (
-                    <tr key={a.id}>
-                      <td>
-                        <b>{a.email}</b>
-                        {a.is_primary && <span className="badge accent"> principal</span>}
-                        {a.last_error && <div className="muted">{a.last_error}</div>}
-                      </td>
-                      <td>
-                        <span className={`badge ${a.status === 'active' ? 'ok' : 'danger'}`}>{a.status}</span>
-                      </td>
-                      <td style={{ minWidth: 160 }}>
-                        {a.quota_total_bytes ? (
-                          <>
-                            <div className="progress">
-                              <div
-                                style={{
-                                  width: `${pct}%`,
-                                  background: pct > 90 ? 'var(--danger)' : undefined,
-                                }}
-                              />
-                            </div>
-                            <span className="muted">
-                              {humanBytes(a.quota_used_bytes)} de {humanBytes(a.quota_total_bytes)} ({pct}%)
-                            </span>
-                          </>
-                        ) : (
-                          <span className="muted">sin límite informado</span>
-                        )}
-                      </td>
-                      <td className="muted">{formatDate(a.quota_checked_at)}</td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <button
-                          className="small ghost"
-                          onClick={async () => {
-                            await api.admin.driveRefresh(a.id)
-                            await load()
-                          }}
-                        >
-                          Actualizar
-                        </button>
-                        <button
-                          className="small"
-                          disabled={syncing === a.id}
-                          title="Registra en la plataforma los archivos que subiste a mano desde drive.google.com"
-                          onClick={async () => {
-                            setSyncing(a.id)
-                            setSyncResult('')
-                            try {
-                              const r = await api.admin.driveSync(a.id)
-                              setSyncResult(
-                                `Escaneo terminado: ${r.files_imported} archivos nuevos ` +
-                                  `(${humanBytes(r.bytes_imported)}), ${r.folders_created} carpetas nuevas, ` +
-                                  `${r.files_skipped} ya conocidos.` +
-                                  (r.truncated ? ' Se alcanzó el límite; vuelve a escanear para continuar.' : '') +
-                                  (r.warnings.length ? ` Avisos: ${r.warnings.slice(0, 3).join('; ')}` : ''),
-                              )
-                            } catch (err) {
-                              setError(err instanceof ApiError ? err.message : 'El escaneo falló')
-                            } finally {
-                              setSyncing(null)
-                            }
-                          }}
-                        >
-                          {syncing === a.id ? 'Escaneando…' : 'Escanear Drive'}
-                        </button>
-                        {!a.is_primary && (
-                          <button
-                            className="small ghost"
-                            onClick={async () => {
-                              await api.admin.driveSetPrimary(a.id)
-                              await load()
-                            }}
-                          >
-                            Hacer principal
-                          </button>
-                        )}
-                        <button
-                          className="small danger"
-                          onClick={async () => {
-                            if (!confirm(`¿Desconectar ${a.email}? Los archivos seguirán en Drive.`)) return
-                            await api.admin.driveDisconnect(a.id)
-                            await load()
-                            onChange()
-                          }}
-                        >
-                          Desconectar
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
+                {(data.usage_by_user ?? []).map((u: any) => (
+                  <tr key={u.email}>
+                    <td>
+                      <b>{u.name || u.email.split('@')[0]}</b>
+                      <div className="dim">{u.email}</div>
+                    </td>
+                    <td className="num">{u.file_count}</td>
+                    <td className="num">{humanBytes(u.stored_bytes)}</td>
+                    <td className="num">{humanBytes(u.download_bytes_30d)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
-        )}
-      </div>
-
-      {data?.root_folder && (
-        <div className="card">
-          <h3>Carpeta raíz</h3>
-          <p className="muted" style={{ margin: 0 }}>
-            Todo lo que sube la plataforma vive dentro de <b>{data.root_folder.name}</b> en el Drive
-            de la cuenta principal.
-          </p>
         </div>
-      )}
+
+        <div className="card">
+          <div className="card-head">
+            <h2>Archivos más descargados</h2>
+          </div>
+          {(data.top_files ?? []).length === 0 ? (
+            <div className="empty">Todavía no hay descargas registradas.</div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Archivo</th>
+                    <th>Tamaño</th>
+                    <th>Descargas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.top_files ?? []).map((f: any, i: number) => (
+                    <tr key={i}>
+                      <td>
+                        <b className="truncate" style={{ display: 'block', maxWidth: 280 }}>
+                          {f.name}
+                        </b>
+                        <div className="dim">{f.owner}</div>
+                      </td>
+                      <td className="num">{humanBytes(f.size_bytes)}</td>
+                      <td className="num">{f.downloads}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
 
-// ---------------------------------------------------------------- usuarios --
+function Metric({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="card metric">
+      <div className="label">{label}</div>
+      <div className="value">{value}</div>
+      {hint && <div className="hint">{hint}</div>}
+    </div>
+  )
+}
 
-function UsersTab({ me }: { me: User }) {
+/* ────────────────────────────────────────────────────── usuarios ───── */
+
+function UsersSection({ me }: { me: User }) {
   const [users, setUsers] = useState<User[]>([])
   const [defaults, setDefaults] = useState({ quota: 0, bandwidth: 0 })
   const [error, setError] = useState('')
   const [creating, setCreating] = useState(false)
-  const [tempPassword, setTempPassword] = useState<{ email: string; password: string } | null>(null)
+  const [temp, setTemp] = useState<{ email: string; password: string } | null>(null)
+  const [filtro, setFiltro] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -306,33 +255,58 @@ function UsersTab({ me }: { me: User }) {
     }
   }
 
+  const visibles = users.filter(
+    (u) =>
+      !filtro ||
+      u.email.toLowerCase().includes(filtro.toLowerCase()) ||
+      (u.name ?? '').toLowerCase().includes(filtro.toLowerCase()),
+  )
+
   return (
     <div>
-      {error && <div className="alert error">{error}</div>}
+      <div className="page-head row between">
+        <div>
+          <h1>Usuarios</h1>
+          <div className="lead">
+            {users.length} cuentas · cuota por defecto {humanBytes(defaults.quota)}
+          </div>
+        </div>
+        <button className="primary" onClick={() => setCreating(true)}>
+          + Nuevo usuario
+        </button>
+      </div>
 
-      {tempPassword && (
+      {error && (
+        <div className="alert error" onClick={() => setError('')}>
+          <span className="ico">⚠️</span>
+          <span>{error}</span>
+        </div>
+      )}
+
+      {temp && (
         <div className="alert ok">
-          Contraseña temporal de <b>{tempPassword.email}</b>:{' '}
-          <span className="mono">{tempPassword.password}</span> — entrégasela por un canal seguro;
-          no se vuelve a mostrar.
-          <button className="ghost small" onClick={() => setTempPassword(null)}>
-            Ocultar
-          </button>
+          <span className="ico">🔑</span>
+          <span>
+            Contraseña temporal de <b>{temp.email}</b>: <span className="mono">{temp.password}</span> — entrégasela
+            por un canal seguro; no se vuelve a mostrar.
+            <button className="ghost sm" style={{ marginLeft: '.5rem' }} onClick={() => setTemp(null)}>
+              Ocultar
+            </button>
+          </span>
         </div>
       )}
 
       <div className="card">
-        <div className="row between">
-          <h2>Usuarios ({users.length})</h2>
-          <button className="primary" onClick={() => setCreating(true)}>
-            Nuevo usuario
-          </button>
+        <div className="card-head">
+          <div className="search" style={{ flex: '0 1 280px' }}>
+            <span className="icon" aria-hidden>
+              🔍
+            </span>
+            <input placeholder="Filtrar por nombre o correo…" value={filtro} onChange={(e) => setFiltro(e.target.value)} />
+          </div>
+          <div className="spacer" />
+          <span className="dim">Un 0 en la cuota significa «usar el valor por defecto»</span>
         </div>
-        <p className="muted">
-          Cuota por defecto: {humanBytes(defaults.quota)} de almacenamiento y{' '}
-          {humanBytes(defaults.bandwidth)} de descarga al mes. Un 0 en la tabla significa «usar el
-          valor por defecto».
-        </p>
 
         <div className="table-wrap">
           <table>
@@ -348,17 +322,19 @@ function UsersTab({ me }: { me: User }) {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
+              {visibles.map((u) => (
                 <tr key={u.id}>
                   <td>
-                    <b>{u.email}</b>
-                    <div className="muted">{u.name}</div>
+                    <b>{u.name || u.email.split('@')[0]}</b>
+                    {u.id === me.id && <span className="badge accent" style={{ marginLeft: '.35rem' }}>tú</span>}
+                    <div className="dim">{u.email}</div>
                   </td>
                   <td>
                     <select
                       value={u.role}
                       disabled={u.id === me.id}
                       onChange={(e) => update(u.id, { role: e.target.value })}
+                      style={{ minWidth: 130 }}
                     >
                       <option value="guest">Invitado</option>
                       <option value="member">Miembro</option>
@@ -368,45 +344,43 @@ function UsersTab({ me }: { me: User }) {
                   </td>
                   <td>
                     <button
-                      className={`small ${u.status === 'active' ? 'ghost' : 'danger'}`}
+                      className={u.status === 'active' ? 'sm subtle' : 'sm danger'}
                       disabled={u.id === me.id}
-                      onClick={() =>
-                        update(u.id, { status: u.status === 'active' ? 'suspended' : 'active' })
-                      }
+                      onClick={() => update(u.id, { status: u.status === 'active' ? 'suspended' : 'active' })}
+                      title={u.status === 'active' ? 'Pulsa para suspender' : 'Pulsa para reactivar'}
                     >
-                      {u.status === 'active' ? 'Activo' : 'Suspendido'}
+                      {u.status === 'active' ? '● Activo' : '○ Suspendido'}
                     </button>
                   </td>
-                  <td>{humanBytes(u.used_bytes)}</td>
+                  <td className="num">{humanBytes(u.used_bytes)}</td>
                   <td style={{ maxWidth: 110 }}>
                     <input
                       type="number"
                       min={0}
                       defaultValue={Math.round(u.quota_bytes / (1024 * 1024 * 1024))}
                       onBlur={(e) => {
-                        const gb = Number(e.target.value)
-                        const bytes = gb * 1024 * 1024 * 1024
+                        const bytes = Number(e.target.value) * 1024 * 1024 * 1024
                         if (bytes !== u.quota_bytes) update(u.id, { quota_bytes: bytes })
                       }}
                     />
                   </td>
-                  <td className="muted">{formatDate(u.last_login_at)}</td>
+                  <td className="dim">{formatDate(u.last_login_at)}</td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <button
-                      className="small ghost"
+                      className="ghost sm"
                       onClick={async () => {
                         if (!confirm(`¿Generar una contraseña nueva para ${u.email}?`)) return
                         const res = await api.admin.resetPassword(u.id)
-                        setTempPassword({ email: u.email, password: res.temporary_password })
+                        setTemp({ email: u.email, password: res.temporary_password })
                       }}
                     >
                       Restablecer clave
                     </button>
                     {me.role === 'admin' && u.id !== me.id && (
                       <button
-                        className="small danger"
+                        className="danger sm"
                         onClick={async () => {
-                          if (!confirm(`¿Eliminar a ${u.email}? Sus archivos permanecen.`)) return
+                          if (!confirm(`¿Eliminar a ${u.email}? Sus archivos permanecen en la plataforma.`)) return
                           await api.admin.deleteUser(u.id)
                           await load()
                         }}
@@ -417,6 +391,13 @@ function UsersTab({ me }: { me: User }) {
                   </td>
                 </tr>
               ))}
+              {visibles.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="empty">
+                    Ningún usuario coincide con «{filtro}».
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -427,7 +408,7 @@ function UsersTab({ me }: { me: User }) {
           onClose={() => setCreating(false)}
           onCreated={(email, password) => {
             setCreating(false)
-            if (password) setTempPassword({ email, password })
+            if (password) setTemp({ email, password })
             void load()
           }}
         />
@@ -474,282 +455,426 @@ function NewUserModal({
         <>
           <button onClick={onClose}>Cancelar</button>
           <button className="primary" onClick={create} disabled={busy || !email.includes('@')}>
-            Crear
+            {busy ? 'Creando…' : 'Crear usuario'}
           </button>
         </>
       }
     >
-      {error && <div className="alert error">{error}</div>}
+      {error && (
+        <div className="alert error">
+          <span className="ico">⚠️</span>
+          <span>{error}</span>
+        </div>
+      )}
+
       <div className="field">
         <label htmlFor="ne">Correo</label>
         <input id="ne" type="email" value={email} autoFocus onChange={(e) => setEmail(e.target.value)} />
       </div>
       <div className="field">
         <label htmlFor="nn">Nombre</label>
-        <input id="nn" value={name} onChange={(e) => setName(e.target.value)} />
+        <input id="nn" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre y apellido" />
       </div>
-      <div className="row" style={{ gap: '1rem' }}>
+      <div className="row" style={{ alignItems: 'flex-start', gap: '1rem' }}>
         <div className="field" style={{ flex: 1 }}>
           <label htmlFor="nr">Rol</label>
           <select id="nr" value={role} onChange={(e) => setRole(e.target.value)}>
-            <option value="guest">Invitado — solo ve y descarga lo que se le permita</option>
-            <option value="member">Miembro — sube y descarga</option>
-            <option value="manager">Gestor — administra carpetas y usuarios</option>
-            <option value="admin">Administrador — control total</option>
+            <option value="guest">Invitado</option>
+            <option value="member">Miembro</option>
+            <option value="manager">Gestor</option>
+            <option value="admin">Administrador</option>
           </select>
+          <div className="help">
+            {role === 'guest' && 'Solo ve y descarga lo que se le permita expresamente.'}
+            {role === 'member' && 'Sube y descarga en las carpetas abiertas.'}
+            {role === 'manager' && 'Administra carpetas, permisos y usuarios.'}
+            {role === 'admin' && 'Control total, incluida la conexión con Google Drive.'}
+          </div>
         </div>
         <div className="field" style={{ width: 130 }}>
           <label htmlFor="nq">Cuota (GB)</label>
-          <input
-            id="nq"
-            type="number"
-            min={0}
-            value={quotaGB}
-            onChange={(e) => setQuotaGB(Number(e.target.value))}
-          />
+          <input id="nq" type="number" min={0} value={quotaGB} onChange={(e) => setQuotaGB(Number(e.target.value))} />
+          <div className="help">0 = por defecto</div>
         </div>
       </div>
-      <p className="muted">
-        Se generará una contraseña temporal que verás una sola vez. El usuario deberá cambiarla.
-      </p>
+
+      <div className="alert info">
+        <span className="ico">ℹ️</span>
+        <span>Se generará una contraseña temporal que verás una sola vez. El usuario deberá cambiarla al entrar.</span>
+      </div>
     </Modal>
   )
 }
 
-// ------------------------------------------------------------------- uso ---
+/* ───────────────────────────────────────────────────── Google Drive ── */
 
-function UsageTab() {
+function DriveSection({ isAdmin, onChange }: { isAdmin: boolean; onChange: () => void }) {
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    api.admin
-      .stats()
-      .then(setData)
-      .catch((err) => setError(err instanceof ApiError ? err.message : 'No se pudieron cargar las estadísticas'))
-  }, [])
-
-  if (error) return <div className="alert error">{error}</div>
-  if (!data) return <div className="muted">Calculando…</div>
-
-  const t = data.totals
-  const traffic: any[] = data.traffic ?? []
-  const maxTraffic = Math.max(1, ...traffic.map((d) => d.uploads + d.downloads))
-
-  return (
-    <div>
-      <div className="grid">
-        <Stat label="Archivos" value={String(t.files)} hint={humanBytes(t.stored_bytes) + ' almacenados'} />
-        <Stat label="Usuarios activos" value={String(t.active_users)} hint={`${t.users} en total`} />
-        <Stat label="Descargas" value={String(t.downloads)} hint={humanBytes(t.download_bytes_30d) + ' en 30 días'} />
-        <Stat label="Enlaces vigentes" value={String(t.active_shares)} hint={`${t.uploads_today} subidas hoy`} />
-      </div>
-
-      <div className="card">
-        <h3>Tráfico de los últimos {traffic.length} días</h3>
-        <div className="bar-chart">
-          {traffic.map((d) => (
-            <div
-              key={d.day}
-              className="bar"
-              style={{ height: `${((d.uploads + d.downloads) / maxTraffic) * 100}%` }}
-              title={`${d.day}: ${humanBytes(d.uploads)} subidos, ${humanBytes(d.downloads)} descargados`}
-            />
-          ))}
-        </div>
-        <p className="muted">Pasa el cursor por cada barra para ver el detalle del día.</p>
-      </div>
-
-      <div className="card">
-        <h3>Consumo por usuario</h3>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Usuario</th>
-                <th>Archivos</th>
-                <th>Almacenado</th>
-                <th>Cuota</th>
-                <th>Descargado (mes)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data.usage_by_user ?? []).map((u: any) => (
-                <tr key={u.email}>
-                  <td>
-                    <b>{u.email}</b>
-                    <div className="muted">{u.name}</div>
-                  </td>
-                  <td>{u.file_count}</td>
-                  <td>{humanBytes(u.stored_bytes)}</td>
-                  <td className="muted">{u.quota_bytes ? humanBytes(u.quota_bytes) : 'por defecto'}</td>
-                  <td>{humanBytes(u.download_bytes_30d)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="card">
-        <h3>Archivos más descargados</h3>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Archivo</th>
-                <th>Tamaño</th>
-                <th>Descargas</th>
-                <th>Propietario</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data.top_files ?? []).length === 0 && (
-                <tr>
-                  <td colSpan={4} className="muted">
-                    Todavía no hay descargas registradas.
-                  </td>
-                </tr>
-              )}
-              {(data.top_files ?? []).map((f: any, i: number) => (
-                <tr key={i}>
-                  <td>{f.name}</td>
-                  <td>{humanBytes(f.size_bytes)}</td>
-                  <td>{f.downloads}</td>
-                  <td className="muted">{f.owner}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="card stat">
-      <div className="value">{value}</div>
-      <div className="label">{label}</div>
-      {hint && <div className="muted">{hint}</div>}
-    </div>
-  )
-}
-
-// -------------------------------------------------------------- bitácora ---
-
-function AuditTab() {
-  const [entries, setEntries] = useState<any[]>([])
-  const [action, setAction] = useState('')
-  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [syncing, setSyncing] = useState<string | null>(null)
+  const [syncResult, setSyncResult] = useState('')
 
   const load = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ limit: '150' })
+      setData(await api.admin.drive())
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'No se pudo consultar el estado')
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+    const hash = window.location.hash
+    if (hash.includes('drive=conectado')) {
+      onChange()
+      window.location.hash = '/admin/drive'
+    } else if (hash.includes('drive_error=')) {
+      setError('Google devolvió un error: ' + decodeURIComponent(hash.split('drive_error=')[1]))
+      window.location.hash = '/admin/drive'
+    }
+  }, [load, onChange])
+
+  async function connect() {
+    setBusy(true)
+    setError('')
+    try {
+      const res = await api.admin.driveConnect()
+      // Google exige una navegación real del navegador, no una petición fetch.
+      window.location.href = res.auth_url
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'No se pudo iniciar la conexión')
+      setBusy(false)
+    }
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="card">
+        <div className="empty">Solo un administrador puede gestionar las cuentas de Google Drive.</div>
+      </div>
+    )
+  }
+
+  const cuentas: any[] = data?.accounts ?? []
+
+  return (
+    <div>
+      <div className="page-head row between">
+        <div>
+          <h1>Google Drive</h1>
+          <div className="lead">Dónde se guardan los archivos de la plataforma.</div>
+        </div>
+        <button className="primary" onClick={connect} disabled={busy || !data?.configured}>
+          {busy ? 'Abriendo Google…' : '+ Conectar cuenta'}
+        </button>
+      </div>
+
+      {error && (
+        <div className="alert error" onClick={() => setError('')}>
+          <span className="ico">⚠️</span>
+          <span>{error}</span>
+        </div>
+      )}
+      {syncResult && (
+        <div className="alert ok" onClick={() => setSyncResult('')}>
+          <span className="ico">✓</span>
+          <span>{syncResult}</span>
+        </div>
+      )}
+      {!data?.configured && (
+        <div className="alert warn">
+          <span className="ico">⚠️</span>
+          <span>
+            Faltan <span className="mono">GOOGLE_CLIENT_ID</span> y <span className="mono">GOOGLE_CLIENT_SECRET</span>{' '}
+            en <span className="mono">deploy/.env</span>. Revisa <span className="mono">docs/02-GOOGLE-DRIVE-SETUP.md</span>.
+          </span>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-head">
+          <h2>Cuentas enlazadas</h2>
+        </div>
+
+        {cuentas.length === 0 ? (
+          <div className="empty">Todavía no hay ninguna cuenta conectada.</div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Cuenta</th>
+                  <th>Estado</th>
+                  <th style={{ minWidth: 200 }}>Espacio</th>
+                  <th>Comprobado</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {cuentas.map((a) => {
+                  const pct = a.quota_total_bytes ? Math.round((a.quota_used_bytes / a.quota_total_bytes) * 100) : 0
+                  return (
+                    <tr key={a.id}>
+                      <td>
+                        <b>{a.email}</b>
+                        {a.is_primary && <span className="badge accent" style={{ marginLeft: '.35rem' }}>principal</span>}
+                        {a.last_error && <div className="dim">{a.last_error}</div>}
+                      </td>
+                      <td>
+                        <span className={`badge ${a.status === 'active' ? 'ok' : 'danger'}`}>{a.status}</span>
+                      </td>
+                      <td>
+                        {a.quota_total_bytes ? (
+                          <>
+                            <div className="progress">
+                              <div className={pct >= 90 ? 'err' : ''} style={{ width: `${Math.max(pct, 1)}%` }} />
+                            </div>
+                            <span className="dim">
+                              {humanBytes(a.quota_used_bytes)} de {humanBytes(a.quota_total_bytes)} ({pct}%)
+                            </span>
+                          </>
+                        ) : (
+                          <span className="dim">sin límite informado</span>
+                        )}
+                      </td>
+                      <td className="dim">{formatDate(a.quota_checked_at)}</td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button
+                          className="ghost sm"
+                          onClick={async () => {
+                            await api.admin.driveRefresh(a.id)
+                            await load()
+                          }}
+                        >
+                          Actualizar
+                        </button>
+                        {!data?.scope_limited && (
+                          <button
+                            className="subtle sm"
+                            disabled={syncing === a.id}
+                            onClick={async () => {
+                              setSyncing(a.id)
+                              setSyncResult('')
+                              try {
+                                const r = await api.admin.driveSync(a.id)
+                                setSyncResult(
+                                  `Escaneo terminado: ${r.files_imported} archivos nuevos (${humanBytes(
+                                    r.bytes_imported,
+                                  )}), ${r.folders_created} carpetas nuevas, ${r.files_skipped} ya conocidos.`,
+                                )
+                              } catch (err) {
+                                setError(err instanceof ApiError ? err.message : 'El escaneo falló')
+                              } finally {
+                                setSyncing(null)
+                              }
+                            }}
+                          >
+                            {syncing === a.id ? 'Escaneando…' : 'Escanear'}
+                          </button>
+                        )}
+                        {!a.is_primary && (
+                          <button
+                            className="ghost sm"
+                            onClick={async () => {
+                              await api.admin.driveSetPrimary(a.id)
+                              await load()
+                            }}
+                          >
+                            Hacer principal
+                          </button>
+                        )}
+                        <button
+                          className="danger sm"
+                          onClick={async () => {
+                            if (!confirm(`¿Desconectar ${a.email}? Los archivos seguirán en Drive.`)) return
+                            await api.admin.driveDisconnect(a.id)
+                            await load()
+                            onChange()
+                          }}
+                        >
+                          Desconectar
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <h2>Configuración técnica</h2>
+        </div>
+        <div className="card-body">
+          <div className="field">
+            <label>URI de redirección autorizada en Google Cloud</label>
+            <input readOnly className="mono" value={data?.redirect_uri ?? ''} onFocus={(e) => e.target.select()} />
+            <div className="help">Debe coincidir carácter por carácter, o Google responderá redirect_uri_mismatch.</div>
+          </div>
+
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label>Permiso solicitado</label>
+            <input readOnly className="mono" value={data?.scope ?? ''} onFocus={(e) => e.target.select()} />
+          </div>
+
+          {data?.scope_limited ? (
+            <div className="alert info" style={{ marginTop: '.9rem', marginBottom: 0 }}>
+              <span className="ico">ℹ️</span>
+              <span>
+                <b>Modo de acceso limitado.</b> La plataforma solo ve los archivos que ella misma crea. Es el permiso
+                que Google considera no sensible, así que no exige pasar por su proceso de verificación. A cambio, lo
+                que subas a mano desde drive.google.com queda fuera de su alcance: sube esos archivos desde aquí.
+              </span>
+            </div>
+          ) : (
+            <div className="alert info" style={{ marginTop: '.9rem', marginBottom: 0 }}>
+              <span className="ico">ℹ️</span>
+              <span>
+                <b>Acceso completo.</b> Usa <b>Escanear</b> para registrar en la plataforma los archivos que hayas
+                subido a mano dentro de la carpeta DocuHub.
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ───────────────────────────────────────────────────────── bitácora ── */
+
+const ACCIONES: Record<string, string> = {
+  'auth.login': 'Inicio de sesión',
+  'auth.logout': 'Cierre de sesión',
+  'auth.password_change': 'Cambio de contraseña',
+  'file.upload': 'Subida',
+  'file.upload_init': 'Inicio de subida',
+  'file.download': 'Descarga',
+  'file.delete': 'Eliminación',
+  'file.update': 'Cambio de datos',
+  'file.search': 'Búsqueda',
+  'folder.create': 'Carpeta creada',
+  'folder.delete': 'Carpeta eliminada',
+  'share.create': 'Enlace creado',
+  'share.download': 'Descarga por enlace',
+  'share.revoke': 'Enlace revocado',
+  'share.view': 'Enlace abierto',
+  'share.unlock': 'Enlace desbloqueado',
+  'permission.grant': 'Permiso otorgado',
+  'permission.revoke': 'Permiso revocado',
+  'user.create': 'Usuario creado',
+  'user.update': 'Usuario modificado',
+  'user.delete': 'Usuario eliminado',
+  'drive.connect': 'Drive conectado',
+  'drive.sync': 'Escaneo de Drive',
+}
+
+function AuditSection() {
+  const [entries, setEntries] = useState<any[]>([])
+  const [action, setAction] = useState('')
+  const [days, setDays] = useState('30')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ limit: '200' })
       if (action) params.set('action', action)
+      if (days) params.set('days', days)
       const res = await api.admin.audit(params.toString())
       setEntries(res.entries)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudo leer la bitácora')
+    } finally {
+      setLoading(false)
     }
-  }, [action])
+  }, [action, days])
 
   useEffect(() => {
     void load()
   }, [load])
 
   return (
-    <div className="card">
-      <div className="row between">
-        <h2>Bitácora</h2>
-        <select style={{ width: 240 }} value={action} onChange={(e) => setAction(e.target.value)}>
-          <option value="">Todas las acciones</option>
-          <option value="auth.login">Inicios de sesión</option>
-          <option value="file.upload">Subidas</option>
-          <option value="file.download">Descargas</option>
-          <option value="file.delete">Eliminaciones</option>
-          <option value="share.create">Enlaces creados</option>
-          <option value="share.download">Descargas por enlace</option>
-          <option value="permission.grant">Permisos otorgados</option>
-          <option value="drive.connect">Conexiones de Drive</option>
-        </select>
+    <div>
+      <div className="page-head">
+        <h1>Bitácora</h1>
+        <div className="lead">Todo lo que ha pasado en la plataforma, con su autor y su dirección IP.</div>
       </div>
-      {error && <div className="alert error">{error}</div>}
 
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Cuándo</th>
-              <th>Quién</th>
-              <th>Acción</th>
-              <th>Sobre</th>
-              <th>IP</th>
-              <th>Resultado</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((e) => (
-              <tr key={e.id}>
-                <td className="muted" style={{ whiteSpace: 'nowrap' }}>{formatDate(e.created_at)}</td>
-                <td>{e.actor_email || '—'}</td>
-                <td className="mono">{e.action}</td>
-                <td>{e.resource_name || e.resource_id || '—'}</td>
-                <td className="mono muted">{e.ip}</td>
-                <td>
-                  <span className={`badge ${e.success ? 'ok' : 'danger'}`}>
-                    {e.success ? 'ok' : 'falló'}
-                  </span>
-                </td>
-              </tr>
+      {error && (
+        <div className="alert error">
+          <span className="ico">⚠️</span>
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-head">
+          <select style={{ width: 210 }} value={action} onChange={(e) => setAction(e.target.value)}>
+            <option value="">Todas las acciones</option>
+            {Object.entries(ACCIONES).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
             ))}
-          </tbody>
-        </table>
+          </select>
+          <select style={{ width: 150 }} value={days} onChange={(e) => setDays(e.target.value)}>
+            <option value="1">Últimas 24 horas</option>
+            <option value="7">Últimos 7 días</option>
+            <option value="30">Últimos 30 días</option>
+            <option value="">Todo</option>
+          </select>
+          <div className="spacer" />
+          <span className="dim">{entries.length} registros</span>
+        </div>
+
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Cuándo</th>
+                <th>Quién</th>
+                <th>Acción</th>
+                <th>Sobre</th>
+                <th>IP</th>
+                <th>Resultado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((e) => (
+                <tr key={e.id}>
+                  <td className="dim" style={{ whiteSpace: 'nowrap' }}>
+                    {formatDate(e.created_at)}
+                  </td>
+                  <td>{e.actor_email || <span className="dim">anónimo</span>}</td>
+                  <td>
+                    {ACCIONES[e.action] ?? <span className="mono">{e.action}</span>}
+                  </td>
+                  <td className="truncate" style={{ maxWidth: 240 }}>
+                    {e.resource_name || <span className="dim">—</span>}
+                  </td>
+                  <td className="mono dim">{e.ip}</td>
+                  <td>
+                    <span className={`badge ${e.success ? 'ok' : 'danger'}`}>{e.success ? 'ok' : 'falló'}</span>
+                  </td>
+                </tr>
+              ))}
+              {entries.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={6} className="empty">
+                    No hay registros con estos filtros.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  )
-}
-
-// ------------------------------------------------------------- mi cuenta ---
-
-function AccountTab() {
-  const [current, setCurrent] = useState('')
-  const [next, setNext] = useState('')
-  const [msg, setMsg] = useState('')
-  const [error, setError] = useState('')
-
-  async function change() {
-    setError('')
-    setMsg('')
-    try {
-      await api.changePassword(current, next)
-      setMsg('Contraseña actualizada. Las demás sesiones se cerraron.')
-      setCurrent('')
-      setNext('')
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'No se pudo cambiar la contraseña')
-    }
-  }
-
-  return (
-    <div className="card" style={{ maxWidth: 440 }}>
-      <h2>Cambiar mi contraseña</h2>
-      {error && <div className="alert error">{error}</div>}
-      {msg && <div className="alert ok">{msg}</div>}
-
-      <div className="field">
-        <label htmlFor="cp">Contraseña actual</label>
-        <input id="cp" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} />
-      </div>
-      <div className="field">
-        <label htmlFor="np">Contraseña nueva</label>
-        <input id="np" type="password" value={next} onChange={(e) => setNext(e.target.value)} />
-        <span className="muted">Mínimo 10 caracteres. Una frase larga es más segura que símbolos raros.</span>
-      </div>
-      <button className="primary" onClick={change} disabled={!current || next.length < 10}>
-        Cambiar
-      </button>
     </div>
   )
 }

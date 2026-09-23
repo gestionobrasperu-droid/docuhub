@@ -113,6 +113,9 @@ func (s *Server) routes(static http.Handler) http.Handler {
 			priv.Get("/files/{id}/download", s.handleDownload)
 			priv.Get("/search", s.handleSearch)
 
+			// Pantalla de inicio del usuario: su consumo y sus archivos.
+			priv.Get("/me/overview", s.handleMyOverview)
+
 			priv.Post("/uploads", s.handleInitUpload)
 			priv.Get("/uploads", s.handleListUploads)
 			priv.Get("/uploads/{id}", s.handleUploadStatus)

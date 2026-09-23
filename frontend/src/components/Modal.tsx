@@ -5,9 +5,10 @@ interface Props {
   onClose: () => void
   children: ReactNode
   footer?: ReactNode
+  wide?: boolean
 }
 
-export default function Modal({ title, onClose, children, footer }: Props) {
+export default function Modal({ title, onClose, children, footer, wide }: Props) {
   // Escape cierra: en una herramienta interna se usa el teclado todo el día.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -19,15 +20,21 @@ export default function Modal({ title, onClose, children, footer }: Props) {
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="row between" style={{ marginBottom: '.8rem' }}>
-          <h2 style={{ margin: 0 }}>{title}</h2>
-          <button className="ghost" onClick={onClose} aria-label="Cerrar">
+      <div
+        className="modal"
+        style={wide ? { width: 'min(760px, 100%)' } : undefined}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="modal-head">
+          <h2>{title}</h2>
+          <button className="ghost sm" onClick={onClose} aria-label="Cerrar">
             ✕
           </button>
         </div>
-        {children}
-        {footer && <div className="row" style={{ marginTop: '1rem', justifyContent: 'flex-end' }}>{footer}</div>}
+        <div className="modal-body">{children}</div>
+        {footer && <div className="modal-foot">{footer}</div>}
       </div>
     </div>
   )

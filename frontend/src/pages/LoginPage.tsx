@@ -22,46 +22,61 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
   }
 
   return (
-    <div className="login-wrap">
-      <form className="card login-card" onSubmit={submit}>
-        <h1>
-          <span aria-hidden>🗂️</span> DocuHub
-        </h1>
-        <p className="muted" style={{ marginTop: 0 }}>
-          Gestión documental de la empresa
+    <div className="auth-wrap">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <div className="mark" aria-hidden>
+            📁
+          </div>
+          <h1>DocuHub</h1>
+          <p>Gestión documental · Constructora Pesam</p>
+        </div>
+
+        <form className="card" onSubmit={submit}>
+          <div className="card-body">
+            {error && (
+              <div className="alert error">
+                <span className="ico">⚠️</span>
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="field">
+              <label htmlFor="email">Correo</label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="username"
+                placeholder="nombre@constructorapesam.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+
+            <div className="field">
+              <label htmlFor="password">Contraseña</label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            <button className="primary block" type="submit" disabled={busy}>
+              {busy ? 'Entrando…' : 'Entrar'}
+            </button>
+          </div>
+        </form>
+
+        <p className="dim" style={{ textAlign: 'center', marginTop: '1rem' }}>
+          El acceso es nominal. Si no tienes cuenta, pídesela a un administrador.
         </p>
-
-        {error && <div className="alert error">{error}</div>}
-
-        <div className="field">
-          <label htmlFor="email">Correo</label>
-          <input
-            id="email"
-            type="email"
-            autoComplete="username"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoFocus
-          />
-        </div>
-
-        <div className="field">
-          <label htmlFor="password">Contraseña</label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
-
-        <button className="primary" type="submit" disabled={busy} style={{ width: '100%', justifyContent: 'center' }}>
-          {busy ? 'Entrando…' : 'Entrar'}
-        </button>
-      </form>
+      </div>
     </div>
   )
 }

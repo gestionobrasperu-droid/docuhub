@@ -129,7 +129,7 @@ export default function PermissionsDialog({ resourceType, resourceId, resourceNa
                 </td>
                 <td className="muted">{formatDate(p.created_at)}</td>
                 <td style={{ textAlign: 'right' }}>
-                  <button className="small danger" onClick={() => revoke(p.id)}>
+                  <button className="danger sm" onClick={() => revoke(p.id)}>
                     Quitar
                   </button>
                 </td>
