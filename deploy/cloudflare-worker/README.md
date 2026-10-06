@@ -30,10 +30,10 @@ ningún reloj:
 2. Plantilla **"Editar workers de Cloudflare"** → *Usar plantilla*
 3. En **Recursos de zona**, elige `constructorapesam.com`
 4. **Continuar** → **Crear token** → copia el valor
-5. Pégalo en `deployoudflare-worker.token` (Git lo ignora) y ejecuta:
+5. Pégalo en `deploy\cloudflare-worker\.token` (Git lo ignora) y ejecuta:
 
 ```powershell
-.scriptsdesplegar-cortesia.ps1
+.\scripts\desplegar-cortesia.ps1
 ```
 
 El script publica el Worker, crea la ruta y comprueba que la plataforma sigue
