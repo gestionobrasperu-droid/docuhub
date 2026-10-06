@@ -449,3 +449,26 @@ if ($esAdmin) {
 }
 ` + scriptMontar(baseURL, correo, token, letra, equipo)
 }
+
+// davDiscovery responde al sondeo que hace el cliente WebDAV de Windows sobre
+// la raíz del sitio antes de montar un subdirectorio: si ahí no ve las
+// cabeceras DAV, decide que el servidor no habla WebDAV y aborta con "no se
+// encuentra el nombre de red".
+//
+// Va como middleware y no como ruta a propósito. Registrar OPTIONS "/" en el
+// router hace que chi deje de entregar GET "/" al handler de la aplicación y
+// empiece a responder 405: la web entera se cae. Aquí se intercepta antes de
+// llegar al enrutado y el resto del tráfico sigue su camino intacto.
+func davDiscovery(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions && (r.URL.Path == "/" || r.URL.Path == "") {
+			h := w.Header()
+			h.Set("DAV", "1, 2")
+			h.Set("MS-Author-Via", "DAV")
+			h.Set("Allow", "OPTIONS, GET, HEAD, POST, PUT, DELETE, PROPFIND, PROPPATCH, MKCOL, COPY, MOVE, LOCK, UNLOCK")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
