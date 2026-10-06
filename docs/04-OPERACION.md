@@ -258,3 +258,49 @@ el valor de `APP_ENCRYPTION_KEY`, la plataforma se levanta en otro equipo sin re
 | `DocuHub-Watchdog` | cada 5 min | Comprueba `/healthz`, reinicia si no responde, anota los cortes |
 | `DocuHub-Respaldo` | a diario, 03:15 | `pg_dump` comprimido en `backups\` |
 | `DocuHub-Verificar` | domingos, 04:00 | Restaura el último respaldo y comprueba que sirve |
+
+---
+
+## Arrancar y parar con doble clic
+
+En el escritorio hay tres accesos directos, creados por
+`scripts\crear-accesos-escritorio.ps1`:
+
+| Icono | Qué hace |
+|---|---|
+| **Iniciar DocuHub** | Arranca Docker si hace falta, levanta la plataforma, comprueba el túnel y abre el navegador. Va informando de cada paso y, si algo falla, dice qué mirar |
+| **Detener DocuHub** | La para de forma ordenada. Avisa antes si la plataforma está en uso, porque cortar una subida obliga a repetirla |
+| **Estado de DocuHub** | Informe de disponibilidad de los últimos 14 días |
+
+Detener **no borra nada**: la base vive en un volumen de Docker y los archivos en Google Drive. Al
+volver a iniciar, todo sigue donde estaba.
+
+Para rehacer los accesos (o quitarlos):
+
+```powershell
+.\scripts\crear-accesos-escritorio.ps1          # crear
+.\scripts\crear-accesos-escritorio.ps1 -Quitar  # quitar
+```
+
+> Estos accesos son para arrancar a mano. El arranque automático al encender el equipo lo sigue
+> haciendo la tarea `DocuHub-Arranque`, que no depende de que nadie pulse nada.
+
+---
+
+## Página de cortesía cuando está apagada
+
+Mientras la laptop está apagada, quien abre `docs.constructorapesam.com` recibe el error **1033** de
+Cloudflare: pantalla ajena, en inglés y con aspecto de que el enlace está roto. Para un cliente que
+acaba de recibir un enlace de descarga, es la peor primera impresión posible.
+
+En [`deploy/cloudflare-worker/`](../deploy/cloudflare-worker/) hay un Worker que lo sustituye por una
+página con la identidad de la empresa: explica que el servicio está fuera de horario, aclara que el
+enlace sigue siendo válido, da un correo de contacto y **se recarga sola** hasta que la plataforma
+vuelve.
+
+Cuando la plataforma está en marcha el Worker no interviene: deja pasar la respuesta tal cual, y las
+descargas y subidas por trozos siguen funcionando en streaming.
+
+La instalación son cinco minutos en el panel de Cloudflare y está detallada en el
+[README de esa carpeta](../deploy/cloudflare-worker/README.md). Es gratis: el plan libre incluye
+100.000 peticiones de Worker al día.
