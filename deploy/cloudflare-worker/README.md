@@ -1,5 +1,11 @@
 # Página de cortesía (Cloudflare Worker)
 
+> **Estado: desplegado y verificado el 5 de octubre de 2026.**
+> Worker docuhub-cortesia, ruta docs.constructorapesam.com/*.
+> Comprobado en los dos sentidos: con la plataforma encendida el tráfico pasa
+> con normalidad (HTTP 200), y con la plataforma detenida aparece la página de
+> cortesía (HTTP 503, cabecera X-DocuHub-Origen: 502).
+
 Cuando la laptop está apagada, Cloudflare devuelve su propia pantalla de error —el famoso
 **Error 1033 · Argo Tunnel error**— con su logotipo y un texto técnico en inglés. Quien la ve suele
 ser un cliente que acaba de recibir un enlace de descarga.

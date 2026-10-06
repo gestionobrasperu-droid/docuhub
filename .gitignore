@@ -39,3 +39,6 @@ desktop.ini
 
 # Token de API de Cloudflare para desplegar el Worker
 deploy/cloudflare-worker/.token
+
+# Cache local de wrangler (incluye el id de cuenta de Cloudflare)
+deploy/cloudflare-worker/.wrangler/
