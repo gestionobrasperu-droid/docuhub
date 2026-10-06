@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useState } from 'react'
 import { api, ApiError, formatDate, humanBytes, SessionInfo } from '../api'
+import ConnectDevice from '../components/ConnectDevice'
 
 const ROLES: Record<string, { label: string; desc: string }> = {
   admin: { label: 'Administrador', desc: 'Control total, incluida la conexión con Google Drive' },
@@ -169,6 +170,10 @@ export default function AccountPage({
             </p>
           </div>
         </form>
+      </div>
+
+      <div style={{ marginTop: "1rem" }}>
+        <ConnectDevice />
       </div>
     </div>
   )

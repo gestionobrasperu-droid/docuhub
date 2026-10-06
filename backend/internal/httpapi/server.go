@@ -63,6 +63,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.handler.ServeHTTP(w, r)
 }
 
+// WebDAV usa metodos HTTP que chi no conoce de serie: sin registrarlos,
+// el router responde 405 a todo lo que no sea GET o PUT y Windows no puede
+// ni listar la unidad.
+func init() {
+	for _, m := range []string{"PROPFIND", "PROPPATCH", "MKCOL", "COPY", "MOVE", "LOCK", "UNLOCK"} {
+		chi.RegisterMethod(m)
+	}
+}
+
 func (s *Server) routes(static http.Handler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(recoverPanics, s.logRequests, securityHeaders, s.authenticate)
@@ -116,6 +125,11 @@ func (s *Server) routes(static http.Handler) http.Handler {
 			// Pantalla de inicio del usuario: su consumo y sus archivos.
 			priv.Get("/me/overview", s.handleMyOverview)
 
+			// Equipos conectados como unidad de red.
+			priv.Get("/me/conectar-pc", s.handleConectarPC)
+			priv.Get("/me/equipos", s.handleListarEquipos)
+			priv.Delete("/me/equipos/{id}", s.handleRevocarEquipo)
+
 			priv.Post("/uploads", s.handleInitUpload)
 			priv.Get("/uploads", s.handleListUploads)
 			priv.Get("/uploads/{id}", s.handleUploadStatus)
@@ -162,6 +176,11 @@ func (s *Server) routes(static http.Handler) http.Handler {
 			})
 		})
 	})
+
+	// Montaje como unidad de red. Va fuera de /api porque Windows pide la
+	// raiz del recurso, y su autenticacion es Basic, no la cookie de sesion.
+	r.Handle("/dav", s.davHandler())
+	r.Handle("/dav/*", s.davHandler())
 
 	// Atajo legible para compartir: /s/{token} abre el frontend público.
 	r.Get("/s/{token}", func(w http.ResponseWriter, req *http.Request) {

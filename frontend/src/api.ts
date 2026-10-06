@@ -352,3 +352,22 @@ export function formatDate(iso?: string): string {
 export function plural(n: number, singular: string, plural: string): string {
   return `${n} ${n === 1 ? singular : plural}`
 }
+
+// ------------------------------------------------- equipos como unidad ----
+
+export interface Device {
+  id: string
+  device_name: string
+  created_at: string
+  last_used_at?: string
+  last_ip?: string
+}
+
+export const devices = {
+  list: () => request<{ devices: Device[] }>('/api/me/equipos'),
+  revoke: (id: string) => request<{ ok: boolean }>(`/api/me/equipos/${id}`, { method: 'DELETE' }),
+  // La descarga va por navegación directa: el servidor responde con
+  // Content-Disposition y el navegador guarda el archivo.
+  installerUrl: (equipo: string, letra: string) =>
+    `/api/me/conectar-pc?equipo=${encodeURIComponent(equipo)}&letra=${encodeURIComponent(letra)}`,
+}

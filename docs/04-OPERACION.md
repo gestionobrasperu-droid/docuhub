@@ -329,3 +329,49 @@ cierra las sesiones abiertas de esa persona. Si el correo no existe, lo dice y n
 
 **Pasó el 5 de octubre de 2026**, y hasta ese día la única salida era escribir el hash a mano en la
 base — una maniobra delicada que es justo lo que este comando evita.
+
+---
+
+## DocuHub como unidad de disco (W:)
+
+La plataforma se puede montar como una unidad más del Explorador de Windows. No es lo mismo que
+abrir la carpeta de Google Drive: aquí **cada lectura y cada escritura pasa por los permisos, las
+cuotas y la bitácora**. Una carpeta restringida no aparece siquiera en el Explorador de quien no
+tiene permiso sobre ella.
+
+Los archivos **no ocupan espacio en el equipo**: se descargan al abrirlos y se suben al guardarlos.
+
+### Conectar un equipo
+
+1. En la plataforma: **Mi cuenta → Usar DocuHub como una unidad de disco**
+2. Pon un nombre al equipo, elige la letra y pulsa **Descargar instalador**
+3. En el equipo: clic derecho sobre `Conectar-DocuHub.ps1` → **Ejecutar con PowerShell**
+   - La primera vez conviene hacerlo **como administrador**: así sube el límite de tamaño de
+     archivo de los 50 MB que trae Windows por defecto a 4 GB, que es el máximo admitido.
+
+El instalador activa el cliente WebDAV de Windows, lo deja en arranque automático y monta la unidad
+de forma permanente. Se reconecta sola al iniciar sesión.
+
+### La credencial es por equipo, no la contraseña
+
+El instalador lleva dentro un token que vale **solo para ese equipo**. Windows lo guarda en su
+Administrador de credenciales, que es justo el motivo de no usar ahí la contraseña real.
+
+Si se pierde una laptop, se entra a **Mi cuenta** y se desconecta ese equipo: su credencial deja de
+valer al instante, sin tocar la contraseña ni los demás equipos. La lista muestra cuándo se conectó
+cada uno y cuándo lo usó por última vez.
+
+### Límites que conviene conocer
+
+| Asunto | Realidad |
+|---|---|
+| Tamaño por archivo | 50 MB de fábrica en Windows; 4 GB tras ejecutar el instalador como administrador |
+| Velocidad | El cliente WebDAV de Windows no es rápido. Para subir carpetas enteras o archivos de muchos GB, la web va mejor |
+| Disponibilidad | La unidad existe mientras la plataforma esté encendida. Con la laptop apagada, Windows marca la unidad como desconectada |
+| Edición directa | Abrir un documento desde W:, editarlo y guardarlo crea una versión nueva, igual que al subirlo desde la web |
+
+### Comprobado el 5 de octubre de 2026
+
+Montada la unidad en esta laptop y probado el ciclo completo: la unidad lista los archivos reales,
+una copia desde el Explorador llega a Google Drive a través de la plataforma, se lee de vuelta
+**idéntica byte a byte**, y la operación queda registrada en la bitácora como `file.upload`.

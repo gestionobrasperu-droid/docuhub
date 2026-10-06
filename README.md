@@ -30,7 +30,7 @@ Python/Django necesitaría workers ASGI + tuning para no comerse la RAM de la la
 
 | Capa | Tecnología |
 |---|---|
-| Backend | Go 1.22 + chi (router) — REST API, cliente propio del API de Drive v3 |
+| Backend | Go 1.26 + chi (router) — REST API, cliente propio del API de Drive v3 |
 | Base de datos | PostgreSQL 16 (Docker) |
 | Frontend | React 18 + TypeScript + Vite (build estático embebido en el binario Go) |
 | Reverse proxy / TLS | Caddy (certificados automáticos) |
