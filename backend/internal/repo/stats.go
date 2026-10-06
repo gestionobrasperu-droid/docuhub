@@ -6,16 +6,16 @@ import (
 )
 
 type Totals struct {
-	Users          int   `json:"users"`
-	ActiveUsers    int   `json:"active_users"`
-	Files          int   `json:"files"`
-	StoredBytes    int64 `json:"stored_bytes"`
-	Downloads      int64 `json:"downloads"`
-	Folders        int   `json:"folders"`
-	ActiveShares   int   `json:"active_shares"`
-	UploadsToday   int   `json:"uploads_today"`
-	DownloadBytes  int64 `json:"download_bytes_30d"`
-	UploadBytes    int64 `json:"upload_bytes_30d"`
+	Users         int   `json:"users"`
+	ActiveUsers   int   `json:"active_users"`
+	Files         int   `json:"files"`
+	StoredBytes   int64 `json:"stored_bytes"`
+	Downloads     int64 `json:"downloads"`
+	Folders       int   `json:"folders"`
+	ActiveShares  int   `json:"active_shares"`
+	UploadsToday  int   `json:"uploads_today"`
+	DownloadBytes int64 `json:"download_bytes_30d"`
+	UploadBytes   int64 `json:"upload_bytes_30d"`
 }
 
 type DailyTraffic struct {

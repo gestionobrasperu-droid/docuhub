@@ -72,9 +72,9 @@ func Load() (*Config, error) {
 	c.EncryptionKey = key
 
 	c.SessionTTL = envDuration("SESSION_TTL", 12*time.Hour)
-	c.DefaultQuotaBytes = envBytes("DEFAULT_QUOTA_BYTES", 10<<30)          // 10 GiB
-	c.DefaultBandwidthBytes = envBytes("DEFAULT_BANDWIDTH_BYTES", 50<<30)  // 50 GiB/mes
-	c.MaxChunkBytes = envBytes("MAX_CHUNK_BYTES", 16<<20)                  // 16 MiB
+	c.DefaultQuotaBytes = envBytes("DEFAULT_QUOTA_BYTES", 10<<30)         // 10 GiB
+	c.DefaultBandwidthBytes = envBytes("DEFAULT_BANDWIDTH_BYTES", 50<<30) // 50 GiB/mes
+	c.MaxChunkBytes = envBytes("MAX_CHUNK_BYTES", 16<<20)                 // 16 MiB
 	c.CookieSecure = envBool("COOKIE_SECURE", strings.HasPrefix(c.BaseURL, "https://"))
 	c.TrustProxyHeaders = envBool("TRUST_PROXY_HEADERS", true)
 

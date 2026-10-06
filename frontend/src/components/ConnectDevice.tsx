@@ -79,9 +79,15 @@ export default function ConnectDevice() {
           <div className="alert ok" style={{ marginTop: '1rem' }}>
             <span className="ico">✓</span>
             <span>
-              Se descargó <b>Conectar-DocuHub.ps1</b>. Haz clic derecho sobre él → <b>Ejecutar con
-              PowerShell</b>. La primera vez conviene ejecutarlo como administrador: así permite
-              archivos de hasta 4 GB en lugar de 50 MB.
+              Se descargó <b>Conectar-DocuHub.bat</b>. Ábrelo con <b>doble clic</b> y acepta el aviso
+              de Windows: eso es lo que permite subir el límite de archivo de 50 MB a 4 GB. Si lo
+              rechazas, la unidad se monta igual, solo que con el límite pequeño.
+              <div style={{ marginTop: '.4rem' }}>
+                <a href={devices.installerUrl(nombre.trim() || 'Mi PC', letra, 'ps1')}>
+                  Descargar la versión .ps1
+                </a>{' '}
+                <span className="dim">— si una política de la empresa bloquea los .bat</span>
+              </div>
             </span>
           </div>
         )}

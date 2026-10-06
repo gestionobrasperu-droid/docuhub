@@ -365,13 +365,13 @@ func (c *Client) UserEmail(ctx context.Context, accessToken string) (string, str
 }
 
 type DriveFile struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	MimeType    string `json:"mimeType"`
-	Size        string `json:"size"`
-	MD5Checksum string `json:"md5Checksum"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	MimeType    string   `json:"mimeType"`
+	Size        string   `json:"size"`
+	MD5Checksum string   `json:"md5Checksum"`
 	Parents     []string `json:"parents"`
-	Trashed     bool   `json:"trashed"`
+	Trashed     bool     `json:"trashed"`
 }
 
 func (f *DriveFile) SizeBytes() int64 { return parseInt64(f.Size) }

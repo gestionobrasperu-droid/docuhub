@@ -14,12 +14,12 @@ import (
 )
 
 type createShareRequest struct {
-	FileID       *uuid.UUID `json:"file_id"`
-	FolderID     *uuid.UUID `json:"folder_id"`
-	Password     string     `json:"password"`
-	MaxDownloads int        `json:"max_downloads"`
-	ExpiresInDays int       `json:"expires_in_days"`
-	Note         string     `json:"note"`
+	FileID        *uuid.UUID `json:"file_id"`
+	FolderID      *uuid.UUID `json:"folder_id"`
+	Password      string     `json:"password"`
+	MaxDownloads  int        `json:"max_downloads"`
+	ExpiresInDays int        `json:"expires_in_days"`
+	Note          string     `json:"note"`
 }
 
 // handleCreateShare emite un enlace público. El token se muestra UNA vez: en

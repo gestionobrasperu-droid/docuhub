@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -151,16 +152,60 @@ func (s *Server) handleConectarPC(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.audit(r, "device.connect", "user", user.ID.String(), nombre, true,
-		map[string]any{"letra": letra})
+		map[string]any{"letra": letra, "para": user.Email})
 
-	script := scriptConexion(s.cfg.BaseURL, user.Email, token, letra, nombre)
-
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="Conectar-DocuHub.ps1"`)
-	w.Header().Set("Cache-Control", "no-store")
-	// El guion BOM hace que PowerShell 5.1 lea bien los acentos del script.
-	_, _ = w.Write([]byte("\xEF\xBB\xBF" + script))
+	s.entregarInstalador(w, r, user.Email, token, letra, nombre)
 }
+
+// handleInstaladorUsuario deja que un administrador prepare el instalador de
+// otra persona. Repartir equipos a diez empleados no debería obligar a que
+// cada uno entre a la plataforma y se lo descargue: el administrador se lo
+// manda ya hecho.
+func (s *Server) handleInstaladorUsuario(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseUUID(w, r, "id")
+	if !ok {
+		return
+	}
+	destino, err := s.repo.UserByID(r.Context(), id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "El usuario no existe")
+		return
+	}
+	if destino.Status != "active" {
+		writeErr(w, http.StatusConflict, "La cuenta está suspendida: reactívala antes de conectar un equipo")
+		return
+	}
+
+	nombre := strings.TrimSpace(r.URL.Query().Get("equipo"))
+	if nombre == "" {
+		nombre = "Equipo de " + strings.Split(destino.Email, "@")[0]
+	}
+	if len(nombre) > 80 {
+		nombre = nombre[:80]
+	}
+	letra := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("letra")))
+	if len(letra) != 1 || letra[0] < 'D' || letra[0] > 'Z' {
+		letra = "W"
+	}
+
+	token, err := crypto.NewToken(24)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "No se pudo generar la credencial del equipo")
+		return
+	}
+	if _, err := s.repo.CreateDeviceToken(r.Context(), destino.ID, crypto.HashToken(token), nombre, nil); err != nil {
+		writeErr(w, http.StatusInternalServerError, "No se pudo registrar el equipo")
+		return
+	}
+
+	s.audit(r, "device.connect", "user", destino.ID.String(), nombre, true,
+		map[string]any{"letra": letra, "para": destino.Email, "emitido_por_admin": true})
+
+	s.entregarInstalador(w, r, destino.Email, token, letra, nombre)
+}
+
+// entregarInstalador devuelve el .bat de doble clic o, si se pide, el .ps1
+// equivalente.
 
 func (s *Server) handleListarEquipos(w http.ResponseWriter, r *http.Request) {
 	user := userFrom(r.Context())
@@ -189,36 +234,132 @@ func (s *Server) handleRevocarEquipo(w http.ResponseWriter, r *http.Request) {
 // scriptConexion arma el instalador. Va en español y explica lo que hace,
 // porque quien lo ejecuta es una persona que acaba de descargarlo y tiene
 // derecho a saber qué va a tocar en su equipo.
-func scriptConexion(baseURL, correo, token, letra, equipo string) string {
+
+// entregarInstalador devuelve el .bat de doble clic o, si se pide, el .ps1
+// equivalente.
+func (s *Server) entregarInstalador(w http.ResponseWriter, r *http.Request, correo, token, letra, equipo string) {
+	w.Header().Set("Cache-Control", "no-store")
+
+	if strings.EqualFold(r.URL.Query().Get("formato"), "ps1") {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Content-Disposition", `attachment; filename="Conectar-DocuHub.ps1"`)
+		// El BOM hace que PowerShell 5.1 lea bien los acentos.
+		_, _ = w.Write([]byte("\xEF\xBB\xBF" + scriptCompleto(s.cfg.BaseURL, correo, token, letra, equipo)))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="Conectar-DocuHub.bat"`)
+	_, _ = w.Write([]byte(envolverEnBat(
+		scriptPreparar(),
+		scriptMontar(s.cfg.BaseURL, correo, token, letra, equipo),
+	)))
+}
+
+// codificar prepara un script para -EncodedCommand, que espera base64 de
+// UTF-16LE. Así el script viaja entero por la línea de comandos sin que cmd le
+// toque una sola comilla.
+func codificar(script string) string {
+	utf16le := make([]byte, 0, len(script)*2)
+	for _, r := range script {
+		if r > 0xFFFF {
+			r = '?' // fuera del plano básico: no aparece en estos scripts
+		}
+		utf16le = append(utf16le, byte(r), byte(r>>8))
+	}
+	return base64.StdEncoding.EncodeToString(utf16le)
+}
+
+// envolverEnBat arma el instalador de doble clic.
+//
+// La parte delicada es que son DOS contextos distintos y no se pueden mezclar:
+//
+//   - La preparación del sistema (servicio WebClient, límite de tamaño)
+//     necesita permisos de administrador.
+//   - El montaje de la unidad NO debe hacerse como administrador. Windows no
+//     comparte las unidades de red entre la sesión elevada y la normal: si se
+//     monta elevado, la unidad existe para el administrador y el usuario no la
+//     ve en su Explorador.
+//
+// Por eso el .bat eleva solo un proceso aparte para la preparación, y hace el
+// montaje en su propio proceso, que es el del usuario. Además deja activado
+// EnableLinkedConnections, que es lo que hace que una unidad montada en un
+// contexto se vea en el otro.
+func envolverEnBat(preparar, montar string) string {
+	return "@echo off\r\n" +
+		"title Conectar DocuHub\r\n" +
+		"chcp 65001 >nul\r\n" +
+		"echo.\r\n" +
+		"echo   Conectando este equipo con DocuHub...\r\n" +
+		"echo.\r\n" +
+		"\r\n" +
+		":: Paso 1: preparar Windows. Pide permisos porque toca un servicio y el\r\n" +
+		":: registro. Si se rechaza, se sigue igual: solo se pierde poder mover\r\n" +
+		":: archivos de mas de 50 MB por la unidad.\r\n" +
+		"net session >nul 2>&1\r\n" +
+		"if %errorlevel% EQU 0 (\r\n" +
+		"  powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand " + codificar(preparar) + "\r\n" +
+		") else (\r\n" +
+		"  powershell -NoProfile -Command \"try { Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand','" + codificar(preparar) + "' -Verb RunAs -Wait -ErrorAction Stop } catch { Write-Host '   Sin permisos: el limite por archivo se queda en 50 MB' -ForegroundColor Yellow }\"\r\n" +
+		")\r\n" +
+		"\r\n" +
+		":: Paso 2: montar la unidad. Va SIN elevar, a proposito: una unidad\r\n" +
+		":: montada como administrador no aparece en el Explorador del usuario.\r\n" +
+		"powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand " + codificar(montar) + "\r\n"
+}
+
+// scriptPreparar deja Windows listo para montar unidades WebDAV. Es la única
+// parte que necesita permisos de administrador.
+func scriptPreparar() string {
+	return `
+Write-Host '>> Preparando Windows' -ForegroundColor Cyan
+
+# El cliente WebDAV viene parado y en manual en muchas instalaciones.
+$svc = Get-Service WebClient -ErrorAction SilentlyContinue
+if (-not $svc) {
+    Write-Host '   [!] Este Windows no trae el cliente WebDAV' -ForegroundColor Yellow
+} else {
+    Set-Service WebClient -StartupType Automatic -ErrorAction SilentlyContinue
+    if ($svc.Status -ne 'Running') { Start-Service WebClient -ErrorAction SilentlyContinue }
+    Write-Host '   [ok] cliente de red activado y en arranque automatico' -ForegroundColor Green
+}
+
+# Windows rechaza por WebDAV los archivos de mas de 50 MB. Para planos y videos
+# de obra eso no sirve de nada; 4 GB es el maximo que admite.
+try {
+    $p = 'HKLM:\SYSTEM\CurrentControlSet\Services\WebClient\Parameters'
+    Set-ItemProperty -Path $p -Name 'FileSizeLimitInBytes' -Value 4294967295 -Type DWord -ErrorAction Stop
+    Set-ItemProperty -Path $p -Name 'FsCtlRequestTimeoutInSec' -Value 600 -Type DWord -ErrorAction SilentlyContinue
+    Write-Host '   [ok] limite por archivo: 4 GB' -ForegroundColor Green
+} catch {
+    Write-Host "   [!] no se pudo subir el limite: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
+# Sin esto, una unidad montada desde una ventana de administrador no se ve en
+# el Explorador normal, y al reves. Es la causa clasica de "la monte y no
+# aparece".
+try {
+    $pol = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+    Set-ItemProperty -Path $pol -Name 'EnableLinkedConnections' -Value 1 -Type DWord -ErrorAction Stop
+    Write-Host '   [ok] las unidades se comparten entre sesiones' -ForegroundColor Green
+} catch { }
+
+Restart-Service WebClient -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+`
+}
+
+// scriptMontar hace el trabajo visible: montar la unidad y comprobarla. Corre
+// en la sesión del usuario.
+func scriptMontar(baseURL, correo, token, letra, equipo string) string {
 	host := strings.TrimPrefix(strings.TrimPrefix(baseURL, "https://"), "http://")
 
-	return fmt.Sprintf(`# Conectar este equipo con DocuHub
-#
-# Monta la plataforma documental como una unidad de red (%s:) usando la cuenta
-# %s. Lo genero la propia plataforma: la credencial de abajo
-# pertenece solo a este equipo y se puede revocar desde "Mi cuenta" sin tocar
-# la contrasena.
-#
-# Que hace, en orden:
-#   1. Activa el cliente WebDAV de Windows y lo deja en arranque automatico
-#   2. Sube el limite de tamano de archivo (Windows trae 50 MB por defecto)
-#   3. Monta la unidad %s: de forma permanente
-#
-# Hace falta ejecutarlo como administrador solo la primera vez, por los
-# pasos 1 y 2.
-
-$ErrorActionPreference = 'Continue'
-$Host.UI.RawUI.WindowTitle = 'Conectar DocuHub'
-
+	return fmt.Sprintf(`
 $servidor = '%s'
 $usuario  = '%s'
 $clave    = '%s'
 $letra    = '%s'
 $equipo   = '%s'
-
-function Paso($t) { Write-Host ''; Write-Host ">> $t" -ForegroundColor Cyan }
-function Ok($t)   { Write-Host "   [ok] $t" -ForegroundColor Green }
-function Aviso($t){ Write-Host "   [!]  $t" -ForegroundColor Yellow }
 
 function Fin($codigo) {
     Write-Host ''
@@ -227,85 +368,42 @@ function Fin($codigo) {
     exit $codigo
 }
 
-Clear-Host
 Write-Host ''
 Write-Host '  ========================================' -ForegroundColor Blue
 Write-Host '    DocuHub - conectar este equipo' -ForegroundColor White
 Write-Host '  ========================================' -ForegroundColor Blue
 Write-Host ("   Cuenta : {0}" -f $usuario)
+Write-Host ("   Equipo : {0}" -f $equipo)
 Write-Host ("   Unidad : {0}:" -f $letra)
+Write-Host ''
+Write-Host (">> Montando la unidad {0}:" -f $letra) -ForegroundColor Cyan
 
-$esAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
-    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-
-# --- 1. Cliente WebDAV ------------------------------------------------------
-Paso 'Preparando el cliente de red de Windows'
-$svc = Get-Service WebClient -ErrorAction SilentlyContinue
-if (-not $svc) {
-    Aviso 'Este Windows no trae el cliente WebDAV (ediciones Server lo traen como caracteristica opcional).'
-} else {
-    if ($esAdmin) {
-        Set-Service WebClient -StartupType Automatic -ErrorAction SilentlyContinue
-        Ok 'arrancara solo con el equipo'
-    }
-    if ($svc.Status -ne 'Running') {
-        try { Start-Service WebClient -ErrorAction Stop; Ok 'servicio iniciado' }
-        catch { Aviso 'no se pudo iniciar el servicio WebClient (ejecuta como administrador)' }
-    } else {
-        Ok 'servicio ya en marcha'
-    }
-}
-
-# --- 2. Limite de tamano ----------------------------------------------------
-# Windows rechaza por defecto los archivos de mas de 50 MB por WebDAV, que
-# para planos y videos de obra no sirve de nada. 4 GB es el maximo admitido.
-Paso 'Ajustando el limite de tamano de archivo'
-if ($esAdmin) {
-    try {
-        $p = 'HKLM:\SYSTEM\CurrentControlSet\Services\WebClient\Parameters'
-        Set-ItemProperty -Path $p -Name 'FileSizeLimitInBytes' -Value 4294967295 -Type DWord -ErrorAction Stop
-        Set-ItemProperty -Path $p -Name 'FsCtlRequestTimeoutInSec' -Value 600 -Type DWord -ErrorAction SilentlyContinue
-        Ok 'hasta 4 GB por archivo'
-        Restart-Service WebClient -Force -ErrorAction SilentlyContinue
-    } catch {
-        Aviso "no se pudo ajustar: $($_.Exception.Message)"
-    }
-} else {
-    Aviso 'sin permisos de administrador: el limite se queda en 50 MB por archivo'
-    Aviso 'vuelve a ejecutar este script como administrador para subirlo a 4 GB'
-}
-
-# --- 3. Montar la unidad ----------------------------------------------------
-Paso ("Montando la unidad {0}:" -f $letra)
-
-# Si ya existia un montaje anterior, se retira para no dejar dos.
+# Si ya habia un montaje anterior se retira, para no dejar dos apuntando al
+# mismo sitio.
 cmd /c "net use ${letra}: /delete /y" 2>&1 | Out-Null
 
 $ruta = "\\$servidor@SSL\DavWWWRoot\dav"
 $salida = cmd /c "net use ${letra}: $ruta /user:$usuario $clave /persistent:yes" 2>&1
 
-if ($LASTEXITCODE -eq 0) {
-    Ok ("unidad {0}: conectada" -f $letra)
-} else {
+if ($LASTEXITCODE -ne 0) {
     Write-Host ''
     Write-Host '   No se pudo montar la unidad:' -ForegroundColor Red
     $salida | ForEach-Object { Write-Host "     $_" -ForegroundColor DarkGray }
     Write-Host ''
     Write-Host '   Causas habituales:' -ForegroundColor Yellow
-    Write-Host '     - El servicio WebClient no esta en marcha (paso 1).'
     Write-Host '     - La plataforma esta apagada ahora mismo.'
-    Write-Host '     - Un antivirus o la red de la oficina bloquean WebDAV.'
+    Write-Host '     - El servicio WebClient no arranco (reinicia el equipo).'
+    Write-Host '     - La red de la oficina o el antivirus bloquean WebDAV.'
     Fin 1
 }
+Write-Host ("   [ok] unidad {0}: conectada" -f $letra) -ForegroundColor Green
 
-# --- Comprobacion -----------------------------------------------------------
-Paso 'Comprobando'
 Start-Sleep -Seconds 2
 if (Test-Path ("{0}:\" -f $letra)) {
     $n = (Get-ChildItem ("{0}:\" -f $letra) -ErrorAction SilentlyContinue | Measure-Object).Count
-    Ok ("se ve el contenido ({0} elementos en la raiz)" -f $n)
+    Write-Host ("   [ok] se ve el contenido ({0} elementos en la raiz)" -f $n) -ForegroundColor Green
 } else {
-    Aviso 'la unidad aparece pero todavia no responde; dale unos segundos'
+    Write-Host '   [!] la unidad aparece pero aun no responde; dale unos segundos' -ForegroundColor Yellow
 }
 
 Write-Host ''
@@ -321,5 +419,33 @@ Write-Host ("   Si pierdes este equipo, entra a {0} y" -f $servidor) -Foreground
 Write-Host '   desconectalo desde Mi cuenta: la credencial deja de valer.' -ForegroundColor DarkGray
 
 Fin 0
-`, letra, correo, letra, host, correo, token, letra, equipo)
+`, host, correo, token, letra, equipo)
+}
+
+// scriptCompleto es la versión .ps1, para quien tenga los .bat bloqueados por
+// política de la empresa. Lleva las dos partes seguidas; si se ejecuta sin
+// permisos, la preparación se salta sola y solo se pierde el límite de 4 GB.
+func scriptCompleto(baseURL, correo, token, letra, equipo string) string {
+	return `# Conectar este equipo con DocuHub
+#
+# Monta la plataforma documental como una unidad de red usando la cuenta de
+# abajo. Lo genero la propia plataforma: la credencial pertenece solo a este
+# equipo y se revoca desde "Mi cuenta" sin tocar la contrasena.
+#
+# Clic derecho -> Ejecutar con PowerShell. Como administrador la primera vez,
+# para subir el limite de archivo de 50 MB a 4 GB.
+
+$esAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if ($esAdmin) {
+` + scriptPreparar() + `
+    Write-Host ''
+    Write-Host '   AVISO: al ejecutar como administrador, la unidad se monta para' -ForegroundColor Yellow
+    Write-Host '   el administrador. Si luego no la ves en tu Explorador, vuelve a' -ForegroundColor Yellow
+    Write-Host '   ejecutar este archivo SIN permisos de administrador.' -ForegroundColor Yellow
+} else {
+    Write-Host '>> Sin permisos de administrador: no se ajusta el limite de 50 MB' -ForegroundColor Yellow
+}
+` + scriptMontar(baseURL, correo, token, letra, equipo)
 }

@@ -25,10 +25,10 @@ type lector struct {
 	ctx     context.Context
 	archivo *models.File
 
-	cuerpo io.ReadCloser
-	pos    int64 // dónde está el lector
+	cuerpo  io.ReadCloser
+	pos     int64 // dónde está el lector
 	abierto int64 // posición en la que se abrió el flujo actual
-	leidos int64
+	leidos  int64
 }
 
 func (f *FS) nuevoLector(ctx context.Context, archivo *models.File) (*lector, error) {
@@ -133,9 +133,9 @@ func (l *lector) Close() error {
 	return nil
 }
 
-func (l *lector) Stat() (os.FileInfo, error)            { return infoArchivo(l.archivo), nil }
-func (l *lector) Write([]byte) (int, error)             { return 0, os.ErrPermission }
-func (l *lector) Readdir(int) ([]os.FileInfo, error)    { return nil, os.ErrInvalid }
+func (l *lector) Stat() (os.FileInfo, error)         { return infoArchivo(l.archivo), nil }
+func (l *lector) Write([]byte) (int, error)          { return 0, os.ErrPermission }
+func (l *lector) Readdir(int) ([]os.FileInfo, error) { return nil, os.ErrInvalid }
 
 // ------------------------------------------------------------ escritura ---
 

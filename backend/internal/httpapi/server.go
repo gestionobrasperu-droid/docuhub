@@ -155,6 +155,7 @@ func (s *Server) routes(static http.Handler) http.Handler {
 				adm.Post("/users", s.handleCreateUser)
 				adm.Patch("/users/{id}", s.handleUpdateUser)
 				adm.Post("/users/{id}/password", s.handleResetPassword)
+				adm.Get("/users/{id}/instalador", s.handleInstaladorUsuario)
 				adm.With(requireRole("admin")).Delete("/users/{id}", s.handleDeleteUser)
 
 				adm.Route("/drive", func(dr chi.Router) {
@@ -179,6 +180,17 @@ func (s *Server) routes(static http.Handler) http.Handler {
 
 	// Montaje como unidad de red. Va fuera de /api porque Windows pide la
 	// raiz del recurso, y su autenticacion es Basic, no la cookie de sesion.
+	// El cliente WebDAV de Windows consulta OPTIONS en la RAIZ del sitio antes
+	// de montar un subdirectorio: si ahi no ve las cabeceras DAV, decide que el
+	// servidor no habla WebDAV y falla con "no se encuentra el nombre de red".
+	// Por eso la raiz responde al descubrimiento aunque el recurso viva en /dav.
+	r.Options("/", func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("DAV", "1, 2")
+		w.Header().Set("MS-Author-Via", "DAV")
+		w.Header().Set("Allow", "OPTIONS, GET, HEAD, POST, PUT, DELETE, PROPFIND, PROPPATCH, MKCOL, COPY, MOVE, LOCK, UNLOCK")
+		w.WriteHeader(http.StatusOK)
+	})
+
 	r.Handle("/dav", s.davHandler())
 	r.Handle("/dav/*", s.davHandler())
 

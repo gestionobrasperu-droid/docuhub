@@ -368,6 +368,11 @@ export const devices = {
   revoke: (id: string) => request<{ ok: boolean }>(`/api/me/equipos/${id}`, { method: 'DELETE' }),
   // La descarga va por navegación directa: el servidor responde con
   // Content-Disposition y el navegador guarda el archivo.
-  installerUrl: (equipo: string, letra: string) =>
-    `/api/me/conectar-pc?equipo=${encodeURIComponent(equipo)}&letra=${encodeURIComponent(letra)}`,
+  installerUrl: (equipo: string, letra: string, formato: 'bat' | 'ps1' = 'bat') =>
+    `/api/me/conectar-pc?equipo=${encodeURIComponent(equipo)}&letra=${letra}&formato=${formato}`,
+
+  // Un administrador puede prepararlo para otra persona y mandárselo hecho,
+  // en lugar de pedirle que entre a la plataforma a descargárselo.
+  installerForUser: (userId: string, equipo: string, letra: string) =>
+    `/api/admin/users/${userId}/instalador?equipo=${encodeURIComponent(equipo)}&letra=${letra}`,
 }

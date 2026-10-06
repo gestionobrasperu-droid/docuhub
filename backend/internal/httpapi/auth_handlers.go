@@ -105,7 +105,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		bandwidth = s.cfg.DefaultBandwidthBytes
 	}
 
-	monthStart := time.Now().UTC().Truncate(24 * time.Hour).AddDate(0, 0, -time.Now().UTC().Day()+1)
+	monthStart := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -time.Now().UTC().Day()+1)
 	used, err := s.repo.BandwidthUsedSince(r.Context(), user.ID, monthStart)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "No se pudo calcular el consumo")
@@ -221,8 +221,8 @@ func (s *Server) handleMyOverview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"summary":       summary,
-		"recent_files":  recent,
-		"usage":         usage,
+		"summary":      summary,
+		"recent_files": recent,
+		"usage":        usage,
 	})
 }

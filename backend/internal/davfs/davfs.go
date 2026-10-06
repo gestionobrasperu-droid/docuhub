@@ -60,12 +60,12 @@ func New(deps Deps, user *models.User) *FS {
 // resolver recorre la ruta desde la carpeta raíz. Devuelve la carpeta que
 // contiene al último elemento, y el archivo o la carpeta final si existen.
 type resuelto struct {
-	padre     *models.Folder
-	cadena    []*models.Folder
-	carpeta   *models.Folder // no nil si la ruta apunta a una carpeta
-	archivo   *models.File   // no nil si apunta a un archivo
-	nombre    string         // último segmento
-	esRaiz    bool
+	padre   *models.Folder
+	cadena  []*models.Folder
+	carpeta *models.Folder // no nil si la ruta apunta a una carpeta
+	archivo *models.File   // no nil si apunta a un archivo
+	nombre  string         // último segmento
+	esRaiz  bool
 }
 
 func limpiar(name string) []string {

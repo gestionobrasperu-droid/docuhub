@@ -76,9 +76,9 @@ func (s *Server) handleDriveSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.audit(r, "drive.sync", "drive", acc.ID.String(), acc.Email, true, map[string]any{
-		"carpetas_nuevas":   res.FoldersCreated,
-		"archivos_nuevos":   res.FilesImported,
-		"bytes_importados":  res.BytesImported,
+		"carpetas_nuevas":  res.FoldersCreated,
+		"archivos_nuevos":  res.FilesImported,
+		"bytes_importados": res.BytesImported,
 	})
 	writeJSON(w, http.StatusOK, res)
 }

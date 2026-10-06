@@ -32,10 +32,10 @@ type Usage struct {
 // LimitError distingue el rechazo por cuota de un error técnico, para que la
 // interfaz pueda mostrar un mensaje útil en lugar de "error del servidor".
 type LimitError struct {
-	Kind    string // "almacenamiento" o "descarga"
-	Limit   int64
-	Used    int64
-	Needed  int64
+	Kind   string // "almacenamiento" o "descarga"
+	Limit  int64
+	Used   int64
+	Needed int64
 }
 
 func (e *LimitError) Error() string {

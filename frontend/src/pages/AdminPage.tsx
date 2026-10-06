@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, ApiError, formatDate, humanBytes, plural, SessionInfo, User } from '../api'
+import { api, ApiError, devices, formatDate, humanBytes, plural, SessionInfo, User } from '../api'
 import Modal from '../components/Modal'
 
 export type AdminSection = 'panel' | 'usuarios' | 'drive' | 'bitacora'
@@ -375,6 +375,21 @@ function UsersSection({ me }: { me: User }) {
                       }}
                     >
                       Restablecer clave
+                    </button>
+                    <button
+                      className="ghost sm"
+                      title="Descarga el instalador que monta DocuHub como unidad de disco en el equipo de esta persona"
+                      onClick={() => {
+                        const equipo = prompt(
+                          `Nombre del equipo de ${u.name || u.email.split('@')[0]}:`,
+                          `Equipo de ${(u.name || u.email.split('@')[0]).split(' ')[0]}`,
+                        )
+                        if (!equipo) return
+                        // El alta del equipo ocurre al generar el archivo.
+                        window.location.href = devices.installerForUser(u.id, equipo, 'W')
+                      }}
+                    >
+                      Instalador
                     </button>
                     {me.role === 'admin' && u.id !== me.id && (
                       <button

@@ -22,10 +22,10 @@ import (
 const chunkMultiple = 256 << 10
 
 type initUploadRequest struct {
-	FolderID uuid.UUID `json:"folder_id"`
-	Name     string    `json:"name"`
-	SizeBytes int64    `json:"size_bytes"`
-	MimeType string    `json:"mime_type"`
+	FolderID  uuid.UUID `json:"folder_id"`
+	Name      string    `json:"name"`
+	SizeBytes int64     `json:"size_bytes"`
+	MimeType  string    `json:"mime_type"`
 }
 
 // handleInitUpload abre una sesión resumible en Drive y devuelve el plan de

@@ -170,11 +170,11 @@ func securityHeaders(next http.Handler) http.Handler {
 // rateLimiter es un contador por ventana fija en memoria. Suficiente para una
 // instancia única; si algún día hay varias, se cambia por Redis.
 type rateLimiter struct {
-	mu      sync.Mutex
-	hits    map[string]*bucket
-	limit   int
-	window  time.Duration
-	lastGC  time.Time
+	mu     sync.Mutex
+	hits   map[string]*bucket
+	limit  int
+	window time.Duration
+	lastGC time.Time
 }
 
 type bucket struct {
