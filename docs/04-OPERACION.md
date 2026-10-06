@@ -135,3 +135,78 @@ Get-Content logs\health.log -Tail 10
 Una línea `[OK] servicio respondiendo; disco_libre=…GB temp=…C` cada cinco minutos significa que el
 watchdog está vivo y que la plataforma responde. Si el log deja de crecer, la tarea es lo primero
 que hay que revisar.
+
+---
+
+## Disponibilidad real: cuántas horas al día está en pie
+
+Cuando el servidor es una laptop, la pregunta no es si el servicio responde ahora, sino cuántas
+horas al día responde. El watchdog escribe una línea cada 5 minutos mientras el equipo está
+encendido, así que el dato se puede medir:
+
+```powershell
+.\scripts\uptime-report.ps1 -Days 14
+```
+
+Devuelve las horas encendida, la media diaria, el porcentaje de disponibilidad y los períodos en que
+el servicio no estuvo accesible.
+
+**Medición del 5 de octubre de 2026 (primeros 14 días):** 37 h de 336 posibles — **11% de
+disponibilidad, 2.6 h al día**. La causa no fue técnica: el registro de eventos de Windows no
+muestra ni una sola suspensión en 7 días, y sí 25 apagados manuales. La laptop se apaga al terminar
+la jornada.
+
+Esto no es un fallo que arreglar en el código, es una decisión de cómo se usa el equipo. Las
+opciones, en orden de esfuerzo:
+
+1. **Dejarla encendida.** Ya está configurada para no suspenderse ni al cerrar la tapa. Cuesta unos
+   S/ 15 al mes de electricidad. Si el equipo se queda en la oficina, es lo más sencillo.
+2. **Aceptar el horario de oficina.** Si quien usa DocuHub trabaja en ese horario, 11% basta. Lo que
+   no se puede es prometer a un cliente externo un enlace de descarga a las 10 de la noche.
+3. **Mover la plataforma a hardware que no se mueve.** Un mini PC de ~US$ 120 consume 7 W y hace el
+   mismo trabajo, o Cloud Run + Neon a coste cero (ver `01-INFRAESTRUCTURA.md`). Esta es la salida si
+   la laptop se usa fuera de la oficina: un equipo portátil no puede ser un servidor permanente.
+
+> Mientras la laptop está apagada, quien abra `docs.constructorapesam.com` recibe un error de
+> Cloudflare, no una página de la empresa. Si se van a repartir enlaces fuera, conviene una página
+> de cortesía con un Worker de Cloudflare (gratis) que explique el horario.
+
+### Las tareas no se ejecutaban con batería
+
+Hasta el 5 de octubre de 2026, el respaldo diario fallaba con el código `-2147020576`
+(`0x800710E0`, «el operador o administrador ha rechazado la solicitud»). No era un error del script:
+`schtasks` crea las tareas con dos condiciones de energía que, en una laptop, equivalen a
+desactivarlas — *no iniciar si el equipo está con batería* y *detener si se pasa a batería*.
+
+El resultado: en 13 días solo se había generado **un** respaldo, el único día que el equipo estaba
+enchufado a las 03:15.
+
+Ya está corregido, y `install-tasks.ps1` aplica el ajuste al crear las tareas, así que no vuelve a
+pasar al reinstalar. Las tres tareas tienen ahora:
+
+- **Iniciar aunque esté con batería** y no detenerse al pasar a batería.
+- **Recuperar ejecuciones perdidas** (`StartWhenAvailable`): si a las 03:15 el equipo estaba
+  apagado, el respaldo se hace al encenderlo.
+
+Comprobación (elevada, porque corren como SYSTEM):
+
+```powershell
+Start-Process powershell -Verb RunAs -ArgumentList '-Command','schtasks /query /tn DocuHub-Respaldo /fo list /v | findstr /i "resultado ejecución"; pause'
+```
+
+Un **Último resultado: 0** es correcto. Cualquier otro valor merece una mirada.
+
+### Dónde acaban los respaldos
+
+El proyecto vive dentro de `C:\Users\HP\OneDrive\...`, así que la carpeta `backups\` **se sincroniza
+sola a OneDrive**. Eso cumple la regla de que un respaldo no debe vivir solo en el equipo que puede
+fallar.
+
+Tiene una contrapartida que conviene conocer: `deploy\.env` también se sincroniza, y contiene la
+clave de cifrado, la contraseña de Postgres y el secreto de Google. Quien entre a esa cuenta de
+Microsoft tiene las llaves de la plataforma.
+
+- A favor de dejarlo así: si la laptop desaparece, `APP_ENCRYPTION_KEY` sobrevive, y sin ella los
+  tokens de Google guardados son ilegibles.
+- Mitigación recomendada: **verificación en dos pasos en la cuenta de Microsoft**. Es gratis y
+  cierra el único agujero real de este montaje.

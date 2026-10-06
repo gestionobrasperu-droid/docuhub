@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Levanta DocuHub al encender la laptop. Lo ejecuta la tarea DocuHub-Arranque.

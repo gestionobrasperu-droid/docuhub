@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Crea y configura el túnel de Cloudflare que publica las aplicaciones de la

@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Registra en el Programador de tareas todo lo que debe ocurrir solo:
@@ -95,6 +95,31 @@ foreach ($t in $tasks) {
         Write-Host "  [ok] $($t.Name)" -ForegroundColor Green
     } else {
         Write-Host "  [!]  $($t.Name): $out" -ForegroundColor Red
+    }
+}
+
+# schtasks deja dos condiciones de energia que en una laptop equivalen a
+# desactivar la tarea: no iniciarla con bateria y detenerla si se pasa a
+# bateria. Es lo que hacia fallar el respaldo con 0x800710E0 todos los dias
+# que el equipo no estaba enchufado a las 03:15. Tampoco recupera las
+# ejecuciones perdidas mientras estuvo apagado, asi que se anade
+# StartWhenAvailable. Esto no se puede expresar en la linea de schtasks:
+# hay que corregirlo despues.
+Write-Host "`n=== Ajustando condiciones de energia ===" -ForegroundColor Cyan
+foreach ($t in $tasks) {
+    try {
+        $ajustes = New-ScheduledTaskSettingsSet `
+            -AllowStartIfOnBatteries `
+            -DontStopIfGoingOnBatteries `
+            -StartWhenAvailable `
+            -RestartCount 3 `
+            -RestartInterval (New-TimeSpan -Minutes 5) `
+            -ExecutionTimeLimit (New-TimeSpan -Hours 2) `
+            -MultipleInstances IgnoreNew
+        Set-ScheduledTask -TaskName $t.Name -Settings $ajustes -ErrorAction Stop | Out-Null
+        Write-Host "  [ok] $($t.Name): funciona con bateria y recupera ejecuciones perdidas" -ForegroundColor Green
+    } catch {
+        Write-Host "  [!]  $($t.Name): no se pudieron ajustar ($($_.Exception.Message))" -ForegroundColor Red
     }
 }
 

@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Diagnóstico completo de la cadena dominio -> Cloudflare -> túnel -> aplicación.

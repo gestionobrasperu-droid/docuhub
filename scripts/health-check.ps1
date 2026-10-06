@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Watchdog: comprueba que DocuHub responde y lo reinicia si no.
@@ -59,6 +59,25 @@ function Get-CpuTemperature {
         # Muchos equipos no exponen esta clase; no es un fallo del watchdog.
     }
     return $null
+}
+
+# Un hueco en el log significa que el equipo estuvo apagado o suspendido. Se
+# anota explícitamente para poder medir la disponibilidad real, que es la
+# pregunta de fondo cuando el "servidor" es una laptop: no si el servicio
+# responde ahora, sino cuántas horas al día está disponible para los demás.
+if (Test-Path $logFile) {
+    $ultima = Get-Content $logFile -Tail 1 -ErrorAction SilentlyContinue
+    if ($ultima -match '^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})') {
+        try {
+            $antes = [datetime]::ParseExact($Matches[1], 'yyyy-MM-dd HH:mm:ss', $null)
+            $hueco = (Get-Date) - $antes
+            if ($hueco.TotalMinutes -gt 15) {
+                Write-Log 'GAP' ('el equipo estuvo {0:N1} h sin registrar (apagado o suspendido): la plataforma no estuvo disponible' -f $hueco.TotalHours)
+            }
+        } catch {
+            # Una línea con formato raro no debe tumbar el watchdog.
+        }
+    }
 }
 
 $healthy = Test-Health

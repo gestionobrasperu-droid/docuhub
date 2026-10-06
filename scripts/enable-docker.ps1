@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Deja Docker Desktop listo para trabajar 24/7 en esta laptop.

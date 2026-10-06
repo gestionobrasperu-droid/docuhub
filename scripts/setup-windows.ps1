@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Prepara la laptop para ejecutar DocuHub: instala lo necesario y genera el
