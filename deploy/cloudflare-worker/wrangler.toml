@@ -1,0 +1,15 @@
+# Despliegue del Worker de cortesía con la herramienta oficial de Cloudflare.
+#
+#   npx wrangler login     (una vez: autoriza en el navegador)
+#   npx wrangler deploy    (publica el Worker y crea la ruta)
+#
+# La ruta declarada aquí es la que hace que el Worker se interponga delante de
+# la plataforma. Quitarla de este archivo y volver a desplegar lo desactiva.
+
+name = "docuhub-cortesia"
+main = "cortesia.js"
+compatibility_date = "2025-01-01"
+
+routes = [
+  { pattern = "docs.constructorapesam.com/*", zone_name = "constructorapesam.com" }
+]

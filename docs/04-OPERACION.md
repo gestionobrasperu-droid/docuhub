@@ -304,3 +304,28 @@ descargas y subidas por trozos siguen funcionando en streaming.
 La instalación son cinco minutos en el panel de Cloudflare y está detallada en el
 [README de esa carpeta](../deploy/cloudflare-worker/README.md). Es gratis: el plan libre incluye
 100.000 peticiones de Worker al día.
+
+---
+
+## Si nadie puede entrar: restablecer una contraseña desde el servidor
+
+Las contraseñas se guardan con Argon2id, que es una huella irreversible: **una contraseña olvidada
+no se recupera, se restablece**. Normalmente lo hace un administrador desde
+*Administración → Usuarios → Restablecer clave*.
+
+El caso difícil es cuando quien pierde la clave es el único administrador: no queda nadie dentro que
+pueda restablecérsela. Para eso existe este comando, que no necesita entrar en la plataforma:
+
+```powershell
+cd deploy
+docker compose exec app docuhub -reset-password gestion.obrasperu@gmail.com
+```
+
+Imprime una contraseña temporal, la marca como tal —la plataforma pedirá cambiarla al entrar— y
+cierra las sesiones abiertas de esa persona. Si el correo no existe, lo dice y no toca nada.
+
+> Requiere acceso al equipo donde corre la plataforma. Quien tiene eso ya podría leer la base de
+> datos entera, así que el comando no abre ninguna puerta que no estuviera abierta.
+
+**Pasó el 5 de octubre de 2026**, y hasta ese día la única salida era escribir el hash a mano en la
+base — una maniobra delicada que es justo lo que este comando evita.

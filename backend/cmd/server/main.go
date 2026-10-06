@@ -9,6 +9,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -29,10 +30,77 @@ import (
 )
 
 func main() {
+	// Rompe-cristales: restablecer la contraseña de alguien sin pasar por la
+	// interfaz. Hace falta cuando el único administrador pierde su clave y no
+	// queda nadie dentro que pueda restablecérsela. Sin esto, la única salida
+	// es escribir el hash a mano en la base, que es justo el tipo de maniobra
+	// que acaba mal.
+	//
+	//   docker compose exec app docuhub -reset-password correo@empresa.com
+	if len(os.Args) > 2 && os.Args[1] == "-reset-password" {
+		if err := resetPassword(os.Args[2]); err != nil {
+			fmt.Fprintln(os.Stderr, "no se pudo restablecer:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := run(); err != nil {
 		slog.Error("el servidor no pudo arrancar", "error", err)
 		os.Exit(1)
 	}
+}
+
+// resetPassword genera una contraseña nueva, la deja marcada como temporal y
+// cierra las sesiones abiertas de esa persona. No muestra la anterior porque
+// no se puede: solo se guarda su hash.
+func resetPassword(email string) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	db, err := store.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	r := repo.New(db)
+	user, err := r.UserByEmail(ctx, email)
+	if err != nil {
+		return fmt.Errorf("no hay ningún usuario con el correo %q", email)
+	}
+
+	password, err := crypto.NewToken(9)
+	if err != nil {
+		return err
+	}
+	hash, err := crypto.HashPassword(password)
+	if err != nil {
+		return err
+	}
+	if err := r.SetPassword(ctx, user.ID, hash, true); err != nil {
+		return err
+	}
+	if err := r.RevokeUserSessions(ctx, user.ID); err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Println("  Contraseña restablecida")
+	fmt.Println("  --------------------------------------------")
+	fmt.Println("  Usuario:    ", user.Email)
+	fmt.Println("  Rol:        ", user.Role)
+	fmt.Println("  Contraseña: ", password)
+	fmt.Println("  --------------------------------------------")
+	fmt.Println("  Es temporal: la plataforma pedirá cambiarla al entrar.")
+	fmt.Println("  Las sesiones abiertas de esta persona se han cerrado.")
+	fmt.Println()
+	return nil
 }
 
 func run() error {
