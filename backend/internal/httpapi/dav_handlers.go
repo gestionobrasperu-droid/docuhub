@@ -41,6 +41,24 @@ func (s *Server) davHandlerPrefix(prefix string) http.Handler {
 	ls := webdav.NewMemLS()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// OPTIONS se responde SIN pedir credenciales. El redirector de Windows
+		// pregunta por las capacidades del servidor antes de autenticarse: si
+		// recibe un 401 aquí, reintenta en bucle y acaba abandonando con "no se
+		// encuentra el nombre de red". Es el fallo que tuvo esta instalación:
+		// doce OPTIONS seguidos contra el servidor, todos con 401.
+		//
+		// No revela nada: solo dice qué métodos entiende. Cualquier otro método
+		// sigue exigiendo credenciales.
+		if r.Method == http.MethodOptions {
+			h := w.Header()
+			h.Set("DAV", "1, 2")
+			h.Set("MS-Author-Via", "DAV")
+			h.Set("Allow", "OPTIONS, GET, HEAD, POST, PUT, DELETE, PROPFIND, PROPPATCH, MKCOL, COPY, MOVE, LOCK, UNLOCK")
+			h.Set("Public", "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, PROPPATCH, MKCOL, COPY, MOVE, LOCK, UNLOCK")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		user, tokenID, ok := s.davAuth(w, r)
 		if !ok {
 			return
@@ -98,12 +116,13 @@ func (s *Server) davAuth(w http.ResponseWriter, r *http.Request) (*models.User, 
 		return rechazar()
 	}
 
-	// 1) Token de equipo.
+	// 1) Token de equipo. El nombre de usuario no se comprueba a proposito: el
+	// token ya identifica a una persona sin ambiguedad, y el redirector de
+	// Windows trata un usuario con arroba como identidad de dominio, lo que le
+	// impide enviar la credencial Basic. Asi el instalador puede usar un nombre
+	// simple y la credencial sigue siendo igual de fuerte.
 	if user, tokenID, err := s.repo.UserByDeviceToken(r.Context(), crypto.HashToken(clave)); err == nil {
-		if strings.EqualFold(user.Email, correo) {
-			return user, tokenID, true
-		}
-		return rechazar()
+		return user, tokenID, true
 	} else if !errors.Is(err, repo.ErrNotFound) {
 		http.Error(w, "Error al validar las credenciales", http.StatusInternalServerError)
 		return nil, uuid.Nil, false
@@ -363,7 +382,8 @@ func scriptMontar(baseURL, correo, token, letra, equipo string) string {
 
 	return fmt.Sprintf(`
 $servidor = '%s'
-$usuario  = '%s'
+$usuario  = 'docuhub'
+$correo   = '%s'
 $clave    = '%s'
 $letra    = '%s'
 $equipo   = '%s'
@@ -379,7 +399,7 @@ Write-Host ''
 Write-Host '  ========================================' -ForegroundColor Blue
 Write-Host '    DocuHub - conectar este equipo' -ForegroundColor White
 Write-Host '  ========================================' -ForegroundColor Blue
-Write-Host ("   Cuenta : {0}" -f $usuario)
+Write-Host ("   Cuenta : {0}" -f $correo)
 Write-Host ("   Equipo : {0}" -f $equipo)
 Write-Host ("   Unidad : {0}:" -f $letra)
 Write-Host ''
