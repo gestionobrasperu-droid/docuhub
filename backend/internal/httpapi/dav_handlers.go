@@ -31,6 +31,13 @@ import (
 // credenciales, y un token se revoca sin tocar la cuenta.
 
 func (s *Server) davHandler() http.Handler {
+	return s.davHandlerPrefix("/dav")
+}
+
+// davHandlerPrefix sirve el mismo sistema de archivos bajo el prefijo que se
+// le indique. Hacen falta dos: /dav para quien lo pida explicitamente, y la
+// raiz para el redirector de Windows, que no acepta otra cosa.
+func (s *Server) davHandlerPrefix(prefix string) http.Handler {
 	ls := webdav.NewMemLS()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +47,7 @@ func (s *Server) davHandler() http.Handler {
 		}
 
 		h := &webdav.Handler{
-			Prefix:     "/dav",
+			Prefix:     prefix,
 			FileSystem: davfs.New(s.davDeps(r), user),
 			LockSystem: ls,
 			Logger: func(req *http.Request, err error) {
@@ -382,7 +389,14 @@ Write-Host (">> Montando la unidad {0}:" -f $letra) -ForegroundColor Cyan
 # mismo sitio.
 cmd /c "net use ${letra}: /delete /y" 2>&1 | Out-Null
 
-$ruta = "\\$servidor@SSL\DavWWWRoot\dav"
+# La credencial se guarda en el Administrador de credenciales de Windows, que
+# sobrevive a los reinicios. Sin esto, la unidad reaparece al arrancar pero
+# pide usuario y contrasena en cuanto se abre, que es justo lo que se quiere
+# evitar.
+cmd /c "cmdkey /delete:$servidor" 2>&1 | Out-Null
+cmd /c "cmdkey /add:$servidor /user:$usuario /pass:$clave" 2>&1 | Out-Null
+
+$ruta = "\\$servidor@SSL\"
 $salida = cmd /c "net use ${letra}: $ruta /user:$usuario $clave /persistent:yes" 2>&1
 
 if ($LASTEXITCODE -ne 0) {
@@ -404,6 +418,39 @@ if (Test-Path ("{0}:\" -f $letra)) {
     Write-Host ("   [ok] se ve el contenido ({0} elementos en la raiz)" -f $n) -ForegroundColor Green
 } else {
     Write-Host '   [!] la unidad aparece pero aun no responde; dale unos segundos' -ForegroundColor Yellow
+}
+
+# --- Que sobreviva a los reinicios -----------------------------------------
+# /persistent:yes hace que Windows recuerde la unidad, pero las unidades WebDAV
+# suelen reaparecer como "desconectadas" hasta que algo las toca, y si el
+# servicio WebClient todavia no arranco, el intento falla. Una tarea al iniciar
+# sesion la reconecta sola, con un margen para que la red este lista.
+Write-Host ''
+Write-Host '>> Dejando la conexion permanente' -ForegroundColor Cyan
+
+$carpeta = Join-Path $env:LOCALAPPDATA 'DocuHub'
+if (-not (Test-Path $carpeta)) { New-Item -ItemType Directory -Path $carpeta -Force | Out-Null }
+$reconectar = Join-Path $carpeta 'reconectar.cmd'
+
+# El script de reconexion no lleva la contrasena: la toma del Administrador de
+# credenciales, donde quedo guardada arriba.
+$contenido = @"
+@echo off
+rem Reconecta la unidad de DocuHub al iniciar sesion. Lo creo el instalador.
+timeout /t 20 /nobreak >nul
+sc query WebClient | find "RUNNING" >nul || net start WebClient >nul 2>&1
+if exist ${letra}:\ exit /b 0
+net use ${letra}: \\$servidor@SSL\ /persistent:yes >nul 2>&1
+"@
+Set-Content -Path $reconectar -Value $contenido -Encoding ASCII
+
+schtasks /delete /tn "DocuHub-Reconectar" /f 2>&1 | Out-Null
+$alta = & schtasks @('/create', '/tn', 'DocuHub-Reconectar', '/tr', $reconectar, '/sc', 'ONLOGON', '/f') 2>&1
+if ($LASTEXITCODE -eq 0) {
+    Write-Host '   [ok] se reconectara sola en cada inicio de sesion' -ForegroundColor Green
+} else {
+    Write-Host '   [!] no se pudo programar la reconexion automatica' -ForegroundColor Yellow
+    Write-Host "       $alta" -ForegroundColor DarkGray
 }
 
 Write-Host ''
@@ -470,5 +517,35 @@ func davDiscovery(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r)
+	})
+}
+
+// esClienteWebDAV reconoce al redirector de Windows, que es quien monta las
+// unidades de red. Se identifica siempre con el mismo User-Agent.
+func esClienteWebDAV(r *http.Request) bool {
+	ua := r.UserAgent()
+	return strings.Contains(ua, "Microsoft-WebDAV-MiniRedir") ||
+		strings.Contains(ua, "DavClnt") ||
+		strings.Contains(ua, "Microsoft Office Existence Discovery")
+}
+
+// davEnRaiz deja que el redirector de Windows hable WebDAV directamente con la
+// raíz del sitio.
+//
+// Hace falta porque ese cliente, antes de montar nada, pide GET / y mira lo
+// que recibe: si es una página web, concluye que el servidor no habla WebDAV y
+// aborta con "no se encuentra el nombre de red", sin llegar nunca a /dav. Los
+// registros del servidor lo enseñan sin lugar a dudas.
+//
+// Se distingue por User-Agent, así que un navegador sigue viendo la web
+// exactamente igual: para él no cambia nada.
+func (s *Server) davEnRaiz(siguiente http.Handler) http.Handler {
+	dav := s.davHandlerPrefix("")
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if esClienteWebDAV(r) {
+			dav.ServeHTTP(w, r)
+			return
+		}
+		siguiente.ServeHTTP(w, r)
 	})
 }

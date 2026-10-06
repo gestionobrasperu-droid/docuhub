@@ -190,7 +190,10 @@ func (s *Server) routes(static http.Handler) http.Handler {
 
 	// Todo lo demás lo sirve el frontend compilado (SPA).
 	if static != nil {
-		r.NotFound(static.ServeHTTP)
+		// El redirector de Windows habla WebDAV con la raiz; el resto del
+		// mundo recibe la aplicacion web.
+		r.NotFound(s.davEnRaiz(static).ServeHTTP)
+		r.MethodNotAllowed(s.davEnRaiz(static).ServeHTTP)
 	}
 	return r
 }
