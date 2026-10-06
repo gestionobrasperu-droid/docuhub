@@ -210,3 +210,51 @@ Microsoft tiene las llaves de la plataforma.
   tokens de Google guardados son ilegibles.
 - Mitigación recomendada: **verificación en dos pasos en la cuenta de Microsoft**. Es gratis y
   cierra el único agujero real de este montaje.
+
+---
+
+## Los respaldos están verificados, no solo hechos
+
+Un respaldo que nunca se ha restaurado no es un respaldo: es un archivo del que nadie sabe nada.
+Enterarse de que no servía el día que hace falta es lo peor que puede pasar.
+
+```powershell
+.\scripts\verify-backup.ps1
+```
+
+Toma el respaldo más reciente, levanta un PostgreSQL temporal y aislado, lo restaura dentro y
+comprueba lo que de verdad importa para recuperarse:
+
+| Comprobación | Por qué importa |
+|---|---|
+| La restauración no da errores | Un volcado truncado se detecta aquí, no en la emergencia |
+| Hay usuarios y su hash Argon2id está intacto | Si no, nadie podría entrar en el sistema recuperado |
+| Las cuentas de Drive conservan su token cifrado | Si no, habría que volver a autorizar Google a mano |
+| Cuántos archivos y entradas de bitácora vuelven | Confirma que hay datos, no solo tablas vacías |
+
+Al terminar destruye el contenedor de prueba. **Nunca toca la base de producción.**
+
+Se ejecuta solo los **domingos a las 04:00** (tarea `DocuHub-Verificar`), después del respaldo
+diario. El resultado queda en `logs\backup-verify.log`:
+
+```
+2026-10-05 19:55:34 [OK] respaldo restaurable: 1 usuarios, 1 cuentas de Drive con token,
+                         1 archivos, 45 entradas de bitácora
+```
+
+Si alguna semana aparece una línea `[ERROR]`, el respaldo de ese día no sirve y hay que mirar por
+qué antes de seguir confiando en él. El script también avisa si el respaldo más reciente tiene más
+de 3 días, que es la señal de que la tarea diaria dejó de ejecutarse.
+
+**Primera verificación real:** 5 de octubre de 2026. El volcado restauró limpio, con el hash del
+administrador y el token de Google intactos. Es decir: con el repositorio, un `.zip` de `backups\` y
+el valor de `APP_ENCRYPTION_KEY`, la plataforma se levanta en otro equipo sin reconectar nada.
+
+### Las cuatro tareas automáticas
+
+| Tarea | Cuándo | Qué hace |
+|---|---|---|
+| `DocuHub-Arranque` | al encender | Espera a Docker y levanta la plataforma |
+| `DocuHub-Watchdog` | cada 5 min | Comprueba `/healthz`, reinicia si no responde, anota los cortes |
+| `DocuHub-Respaldo` | a diario, 03:15 | `pg_dump` comprimido en `backups\` |
+| `DocuHub-Verificar` | domingos, 04:00 | Restaura el último respaldo y comprueba que sirve |

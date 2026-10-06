@@ -11,6 +11,8 @@
       DocuHub-Arranque   al encender, espera al motor de Docker y levanta la pila
       DocuHub-Watchdog   cada 5 minutos, comprueba /healthz y recupera el servicio
       DocuHub-Respaldo   cada dia a las 03:15, respalda la base de datos
+      DocuHub-Verificar  los domingos a las 04:00, restaura el ultimo respaldo
+                         en una base de prueba para comprobar que sirve
 
     Ojo al comprobarlas: una tarea que corre como SYSTEM con nivel mas alto
     NO es visible desde una sesion de PowerShell normal. Get-ScheduledTask
@@ -53,7 +55,7 @@ if (-not $isAdmin) {
     throw 'Este script necesita PowerShell como administrador.'
 }
 
-$names = @('DocuHub-Arranque', 'DocuHub-Watchdog', 'DocuHub-Respaldo')
+$names = @('DocuHub-Arranque', 'DocuHub-Watchdog', 'DocuHub-Respaldo', 'DocuHub-Verificar')
 
 if ($Remove) {
     foreach ($n in $names) {
@@ -81,6 +83,13 @@ $tasks = @(
     @{ Name = 'DocuHub-Respaldo'
        Cmd  = (Script-Cmd 'backup.ps1')
        Args = @('/sc', 'DAILY', '/st', '03:15') }
+
+    # Restaura el ultimo respaldo en una base de usar y tirar. Un respaldo que
+    # nunca se ha restaurado no se sabe si sirve, y enterarse el dia que hace
+    # falta es tarde. Va los domingos, despues del respaldo diario.
+    @{ Name = 'DocuHub-Verificar'
+       Cmd  = (Script-Cmd 'verify-backup.ps1')
+       Args = @('/sc', 'WEEKLY', '/d', 'SUN', '/st', '04:00') }
 )
 
 Write-Host "`n=== Registrando tareas ===" -ForegroundColor Cyan
