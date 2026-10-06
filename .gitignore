@@ -42,3 +42,6 @@ deploy/cloudflare-worker/.token
 
 # Cache local de wrangler (incluye el id de cuenta de Cloudflare)
 deploy/cloudflare-worker/.wrangler/
+
+# El paquete de recuperacion va cifrado: ese si puede subirse.
+!deploy/recuperacion.enc

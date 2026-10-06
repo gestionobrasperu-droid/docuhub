@@ -375,3 +375,53 @@ cada uno y cuándo lo usó por última vez.
 Montada la unidad en esta laptop y probado el ciclo completo: la unidad lista los archivos reales,
 una copia desde el Explorador llega a Google Drive a través de la plataforma, se lee de vuelta
 **idéntica byte a byte**, y la operación queda registrada en la bitácora como `file.upload`.
+
+---
+
+## Qué sube al repositorio y qué no
+
+En GitHub está **todo el código y toda la documentación**: con un `git clone` se reconstruye la
+plataforma entera. Lo que no está son las llaves, y es deliberado:
+
+| Fuera del repositorio | Por qué |
+|---|---|
+| `deploy\.env` | Clave de cifrado, contraseña de la base y secreto de Google |
+| `%USERPROFILE%\.cloudflared\` | Credenciales del túnel |
+| `backups\` | Datos de la empresa |
+
+Lo que entra en Git **se queda en su historial para siempre**. Borrarlo después no sirve: sigue en
+los commits anteriores, y basta con que el repositorio cambie de visibilidad, o entre un
+colaborador nuevo, para que se filtre entero.
+
+### Pero sin esas llaves no se puede restaurar
+
+Cierto, y por eso existe el paquete cifrado:
+
+```powershell
+.\scripts\empaquetar-recuperacion.ps1
+```
+
+Reúne el `.env` y la configuración del túnel en un solo archivo, `deploy\recuperacion.enc`, cifrado
+con **AES-256** y una contraseña que eliges tú (derivada con PBKDF2, 200.000 iteraciones). **Ese
+archivo sí se sube al repositorio**: sin la contraseña no es más que ruido.
+
+```powershell
+git add deploy/recuperacion.enc
+git commit -m "Paquete de recuperacion cifrado"
+git push
+```
+
+La contraseña va al **gestor de contraseñas de la empresa**, nunca al repositorio. Si se pierde, el
+paquete no sirve: eso es exactamente lo que lo hace seguro.
+
+Para abrirlo el día que haga falta:
+
+```powershell
+.\scripts\abrir-recuperacion.ps1
+```
+
+Pide la contraseña, descifra y dice dónde va cada archivo. No los coloca solo a propósito:
+sobrescribir el `.env` de un equipo que ya está funcionando es la clase de automatismo que acaba mal.
+
+> Rehaz el paquete cuando cambie algo: si rotas el secreto de Google, cambias la contraseña de la
+> base o rehaces el túnel, el paquete viejo deja de servir.
