@@ -19,7 +19,30 @@ Nada. El plan gratuito de Cloudflare incluye 100.000 peticiones de Worker al dí
 
 ---
 
-## Instalación (5 minutos, una sola vez)
+## Instalación
+
+### Opción A: desde esta laptop, con un token (recomendada)
+
+Un token de API no caduca mientras no se borre, así que no hay que correr contra
+ningún reloj:
+
+1. <https://dash.cloudflare.com/profile/api-tokens> → **Crear token**
+2. Plantilla **"Editar workers de Cloudflare"** → *Usar plantilla*
+3. En **Recursos de zona**, elige `constructorapesam.com`
+4. **Continuar** → **Crear token** → copia el valor
+5. Pégalo en `deployoudflare-worker.token` (Git lo ignora) y ejecuta:
+
+```powershell
+.scriptsdesplegar-cortesia.ps1
+```
+
+El script publica el Worker, crea la ruta y comprueba que la plataforma sigue
+respondiendo. Si algo sale mal, dice qué mirar.
+
+> `npx wrangler login` también vale, pero abre el navegador y **caduca a los dos
+> minutos** si nadie autoriza: en esta instalación falló dos veces por eso.
+
+### Opción B: a mano en el panel (5 minutos)
 
 1. Entra a <https://dash.cloudflare.com> → **Workers y páginas** → **Crear** → **Crear Worker**.
 2. Nombre: `docuhub-cortesia`. **Implementar**.

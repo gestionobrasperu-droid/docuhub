@@ -36,3 +36,6 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# Token de API de Cloudflare para desplegar el Worker
+deploy/cloudflare-worker/.token
